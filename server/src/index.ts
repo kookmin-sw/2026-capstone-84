@@ -3,7 +3,7 @@ import path from 'path';
 import express from 'express';
 import cors from 'cors';
 import { createDatabase, migrate } from './db';
-import { RoomService, MessageService, AuthService, GuestCleanupService } from './services';
+import { RoomService, MessageService, AuthService, GuestCleanupService, createEmailService } from './services';
 import { createRoomRouter, createAuthRouter } from './routes';
 import { setupSocketIO } from './socket';
 
@@ -13,8 +13,11 @@ const PORT = process.env.PORT || 3000;
 const db = createDatabase();
 migrate(db);
 
+// 이메일 서비스 초기화
+const emailService = createEmailService();
+
 // 인증 서비스 초기화 및 운영자 계정 생성
-const authService = new AuthService(db);
+const authService = new AuthService(db, emailService);
 authService.ensureAdminExists();
 
 // 비활성 게스트 참여자 정리

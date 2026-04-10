@@ -42,6 +42,7 @@ export interface UserAccount {
   username: string;
   passwordHash: string;
   displayName: string;
+  email: string | null;
   role: 'user' | 'admin';
   createdAt: Date;
 }
@@ -66,4 +67,20 @@ export interface AuthUser {
 export interface AuthResponse {
   token: string;
   user: AuthUser;
+}
+
+/** 회원가입 응답 (서버 발급 자격증명 포함) */
+export interface RegisterResponse {
+  token: string;
+  user: AuthUser;
+  generatedUsername: string;
+  generatedPassword: string;
+}
+
+/** 게스트 회원전환 응답 */
+export interface ConvertResponse {
+  token: string;
+  user: AuthUser;
+  generatedUsername: string;
+  generatedPassword: string;
 }

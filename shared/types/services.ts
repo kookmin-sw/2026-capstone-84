@@ -1,4 +1,4 @@
-import { AuthPayload, AuthUser, ChatRoom, ChatRoomSummary, Message, Participant } from './models';
+import { AuthPayload, AuthUser, ChatRoom, ChatRoomSummary, ConvertResponse, Message, Participant, RegisterResponse } from './models';
 
 /** 대화방 서비스 인터페이스 */
 export interface RoomService {
@@ -41,10 +41,18 @@ export interface ParticipantService {
 
 /** 인증 서비스 인터페이스 */
 export interface AuthService {
-  register(username: string, password: string, displayName: string): Promise<{ token: string; user: AuthUser }>;
+  register(displayName: string, email: string): Promise<RegisterResponse>;
   login(username: string, password: string): Promise<{ token: string; user: AuthUser }>;
   verifyToken(token: string): AuthPayload;
   ensureAdminExists(): void;
+  reissue(email: string): Promise<void>;
+  convert(guestUserId: string, displayName: string, email: string): Promise<ConvertResponse>;
+}
+
+/** 이메일 서비스 인터페이스 */
+export interface EmailService {
+  sendCredentials(to: string, username: string, password: string): Promise<void>;
+  sendReissuedCredentials(to: string, username: string, newPassword: string): Promise<void>;
 }
 
 /** 비활성 게스트 정리 서비스 인터페이스 */

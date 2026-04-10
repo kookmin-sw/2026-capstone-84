@@ -1,42 +1,38 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import CredentialDisplay from '../components/CredentialDisplay';
 
 interface RegisterPageProps {
-  onRegister: (username: string, password: string, displayName: string) => Promise<void>;
+  onRegister: (displayName: string, email: string) => Promise<{ generatedUsername: string; generatedPassword: string }>;
+  onConfirmCredentials: () => void;
 }
 
-export default function RegisterPage({ onRegister }: RegisterPageProps) {
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
+export default function RegisterPage({ onRegister, onConfirmCredentials }: RegisterPageProps) {
   const [displayName, setDisplayName] = useState('');
+  const [email, setEmail] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [step, setStep] = useState<'form' | 'credentials'>('form');
+  const [credentials, setCredentials] = useState<{ generatedUsername: string; generatedPassword: string } | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
-    if (!username.trim()) {
-      setError('아이디를 입력해주세요');
-      return;
-    }
-    if (!password) {
-      setError('비밀번호를 입력해주세요');
-      return;
-    }
     if (!displayName.trim()) {
       setError('표시 이름을 입력해주세요');
       return;
     }
-    if (password !== confirmPassword) {
-      setError('비밀번호가 일치하지 않습니다');
+    if (!email.trim()) {
+      setError('이메일을 입력해주세요');
       return;
     }
 
     setLoading(true);
     try {
-      await onRegister(username.trim(), password, displayName.trim());
+      const result = await onRegister(displayName.trim(), email.trim());
+      setCredentials(result);
+      setStep('credentials');
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : '회원가입에 실패했습니다';
       setError(message);
@@ -44,6 +40,16 @@ export default function RegisterPage({ onRegister }: RegisterPageProps) {
       setLoading(false);
     }
   };
+
+  if (step === 'credentials' && credentials) {
+    return (
+      <CredentialDisplay
+        username={credentials.generatedUsername}
+        password={credentials.generatedPassword}
+        onConfirm={onConfirmCredentials}
+      />
+    );
+  }
 
   return (
     <div
@@ -69,16 +75,16 @@ export default function RegisterPage({ onRegister }: RegisterPageProps) {
         <h2 style={{ marginTop: 0, marginBottom: '24px' }}>회원가입</h2>
 
         <div style={{ textAlign: 'left', marginBottom: '12px' }}>
-          <label htmlFor="username" style={{ display: 'block', marginBottom: '4px', fontSize: '0.9rem', color: '#333' }}>
-            아이디
+          <label htmlFor="displayName" style={{ display: 'block', marginBottom: '4px', fontSize: '0.9rem', color: '#333' }}>
+            표시 이름
           </label>
           <input
-            id="username"
+            id="displayName"
             type="text"
-            placeholder="아이디 입력"
-            value={username}
+            placeholder="표시 이름 입력"
+            value={displayName}
             onChange={(e) => {
-              setUsername(e.target.value);
+              setDisplayName(e.target.value);
               setError('');
             }}
             autoFocus
@@ -93,65 +99,17 @@ export default function RegisterPage({ onRegister }: RegisterPageProps) {
           />
         </div>
 
-        <div style={{ textAlign: 'left', marginBottom: '12px' }}>
-          <label htmlFor="password" style={{ display: 'block', marginBottom: '4px', fontSize: '0.9rem', color: '#333' }}>
-            비밀번호
-          </label>
-          <input
-            id="password"
-            type="password"
-            placeholder="비밀번호 입력"
-            value={password}
-            onChange={(e) => {
-              setPassword(e.target.value);
-              setError('');
-            }}
-            style={{
-              width: '100%',
-              padding: '10px 12px',
-              borderRadius: '4px',
-              border: '1px solid #ccc',
-              fontSize: '1rem',
-              boxSizing: 'border-box',
-            }}
-          />
-        </div>
-
-        <div style={{ textAlign: 'left', marginBottom: '12px' }}>
-          <label htmlFor="confirmPassword" style={{ display: 'block', marginBottom: '4px', fontSize: '0.9rem', color: '#333' }}>
-            비밀번호 확인
-          </label>
-          <input
-            id="confirmPassword"
-            type="password"
-            placeholder="비밀번호 다시 입력"
-            value={confirmPassword}
-            onChange={(e) => {
-              setConfirmPassword(e.target.value);
-              setError('');
-            }}
-            style={{
-              width: '100%',
-              padding: '10px 12px',
-              borderRadius: '4px',
-              border: '1px solid #ccc',
-              fontSize: '1rem',
-              boxSizing: 'border-box',
-            }}
-          />
-        </div>
-
         <div style={{ textAlign: 'left', marginBottom: '16px' }}>
-          <label htmlFor="displayName" style={{ display: 'block', marginBottom: '4px', fontSize: '0.9rem', color: '#333' }}>
-            표시 이름
+          <label htmlFor="email" style={{ display: 'block', marginBottom: '4px', fontSize: '0.9rem', color: '#333' }}>
+            이메일
           </label>
           <input
-            id="displayName"
-            type="text"
-            placeholder="표시 이름 입력"
-            value={displayName}
+            id="email"
+            type="email"
+            placeholder="이메일 입력"
+            value={email}
             onChange={(e) => {
-              setDisplayName(e.target.value);
+              setEmail(e.target.value);
               setError('');
             }}
             style={{

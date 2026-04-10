@@ -211,7 +211,7 @@ describe('DELETE /api/rooms/:roomId', () => {
   }
 
   async function getUserToken(): Promise<string> {
-    const result = await authService.register('testuser', 'password123', 'Test User');
+    const result = await authService.register('Test User', 'testuser@example.com');
     return result.token;
   }
 

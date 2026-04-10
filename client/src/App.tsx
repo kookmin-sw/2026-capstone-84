@@ -3,13 +3,16 @@ import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from './hooks/useAuth';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
+import ReissuePage from './pages/ReissuePage';
 import UserNamePrompt from './components/UserNamePrompt';
+import GuestConvertForm from './components/GuestConvertForm';
 import RoomListPage from './pages/RoomListPage';
 import ChatRoomPage from './pages/ChatRoomPage';
 
 export default function App() {
   const auth = useAuth();
   const [showGuestPrompt, setShowGuestPrompt] = useState(false);
+  const [showConvertForm, setShowConvertForm] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -22,7 +25,7 @@ export default function App() {
       }
     } else {
       // 로그아웃 상태면 홈으로 (로그인 페이지 표시)
-      if (location.pathname !== '/' && location.pathname !== '/register') {
+      if (location.pathname !== '/' && location.pathname !== '/register' && location.pathname !== '/reissue') {
         navigate('/', { replace: true });
       }
     }
@@ -35,7 +38,8 @@ export default function App() {
     }
     return (
       <Routes>
-        <Route path="/register" element={<RegisterPage onRegister={auth.register} />} />
+        <Route path="/register" element={<RegisterPage onRegister={auth.register} onConfirmCredentials={auth.activateSession} />} />
+        <Route path="/reissue" element={<ReissuePage />} />
         <Route path="*" element={
           <LoginPage
             onLogin={auth.login}
@@ -62,10 +66,10 @@ export default function App() {
         </span>
         {auth.isGuest ? (
           <button
-            onClick={auth.logout}
+            onClick={() => setShowConvertForm(true)}
             style={{ padding: '6px 12px', borderRadius: '4px', border: '1px solid #4a90d9', backgroundColor: '#4a90d9', color: '#fff', cursor: 'pointer', fontSize: '0.85rem' }}
           >
-            로그인
+            회원전환
           </button>
         ) : (
           <button
@@ -76,6 +80,13 @@ export default function App() {
           </button>
         )}
       </header>
+      {showConvertForm && (
+        <GuestConvertForm
+          currentDisplayName={auth.userName}
+          onConvert={auth.convertGuest}
+          onClose={() => setShowConvertForm(false)}
+        />
+      )}
       <Routes>
         <Route path="/" element={<RoomListPage userId={auth.userId} userName={auth.userName} role={auth.role} />} />
         <Route path="/rooms/:roomId" element={<ChatRoomPage userId={auth.userId} userName={auth.userName} />} />

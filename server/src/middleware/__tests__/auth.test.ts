@@ -59,7 +59,7 @@ describe('JWT Auth Middleware', () => {
     });
 
     it('should set req.user when valid Bearer token is provided', async () => {
-      const { token } = await authService.register('testuser', 'password123', 'Test User');
+      const { token, generatedUsername } = await authService.register('Test User', 'test@example.com');
       const req = mockReq({ authorization: `Bearer ${token}` });
       const res = mockRes();
       const next = jest.fn();
@@ -68,7 +68,7 @@ describe('JWT Auth Middleware', () => {
 
       expect(next).toHaveBeenCalled();
       expect(req.user).toBeDefined();
-      expect(req.user!.username).toBe('testuser');
+      expect(req.user!.username).toBe(generatedUsername);
       expect(req.user!.displayName).toBe('Test User');
       expect(req.user!.role).toBe('user');
     });

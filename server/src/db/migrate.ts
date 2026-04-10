@@ -37,4 +37,14 @@ export function migrate(db: Database.Database): void {
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
   `);
+
+  // Migration: Add email column to users table (existing users keep email as NULL)
+  const columns = db.pragma('table_info(users)') as Array<{ name: string }>;
+  const hasEmail = columns.some((c) => c.name === 'email');
+  if (!hasEmail) {
+    db.exec(`ALTER TABLE users ADD COLUMN email TEXT`);
+  }
+
+  // Partial unique index on email (NULL values are allowed, only non-NULL must be unique)
+  db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email) WHERE email IS NOT NULL`);
 }

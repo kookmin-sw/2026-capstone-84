@@ -140,6 +140,12 @@ export default function LoginPage({ onLogin, onGuestClick }: LoginPageProps) {
           </Link>
         </p>
 
+        <p style={{ margin: '0 0 16px 0', fontSize: '0.85rem' }}>
+          <Link to="/reissue" style={{ color: '#4a90d9', textDecoration: 'none' }}>
+            자격증명을 잊으셨나요?
+          </Link>
+        </p>
+
         <button
           type="button"
           onClick={onGuestClick}
