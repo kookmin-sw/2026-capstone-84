@@ -10,9 +10,19 @@ export class ApiError extends Error {
 }
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...((options?.headers as Record<string, string>) ?? {}),
+  };
+
+  const token = localStorage.getItem('auth_token');
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
   const res = await fetch(`${BASE_URL}${url}`, {
-    headers: { 'Content-Type': 'application/json' },
     ...options,
+    headers,
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -43,4 +53,12 @@ export function createRoom(
     method: 'POST',
     body: JSON.stringify({ title, topic, creatorId, creatorName }),
   });
+}
+
+export function deleteRoom(roomId: string): Promise<void> {
+  return request<void>(`/rooms/${roomId}`, { method: 'DELETE' });
+}
+
+export function fetchMyRooms(userId: string): Promise<ChatRoomSummary[]> {
+  return request<ChatRoomSummary[]>(`/rooms/my?userId=${encodeURIComponent(userId)}`);
 }

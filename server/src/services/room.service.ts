@@ -94,4 +94,43 @@ export class RoomService implements IRoomService {
       createdAt: new Date(row.created_at),
     };
   }
+
+  async deleteRoom(roomId: string): Promise<void> {
+    const deleteTransaction = this.db.transaction((id: string) => {
+      this.db.prepare('DELETE FROM participants WHERE room_id = ?').run(id);
+      this.db.prepare('DELETE FROM messages WHERE room_id = ?').run(id);
+      this.db.prepare('DELETE FROM chat_rooms WHERE id = ?').run(id);
+    });
+
+    deleteTransaction(roomId);
+  }
+
+  async getRoomsByUserId(userId: string): Promise<ChatRoomSummary[]> {
+    const rows = this.db.prepare(
+      `SELECT r.id, r.title, r.topic, r.creator_name, r.created_at,
+              COUNT(p2.user_id) AS participant_count
+       FROM participants p
+       JOIN chat_rooms r ON p.room_id = r.id
+       LEFT JOIN participants p2 ON r.id = p2.room_id
+       WHERE p.user_id = ?
+       GROUP BY r.id
+       ORDER BY r.created_at DESC`
+    ).all(userId) as Array<{
+      id: string;
+      title: string;
+      topic: string;
+      creator_name: string;
+      created_at: string;
+      participant_count: number;
+    }>;
+
+    return rows.map((row) => ({
+      id: row.id,
+      title: row.title,
+      topic: row.topic,
+      creatorName: row.creator_name,
+      participantCount: row.participant_count,
+      createdAt: new Date(row.created_at),
+    }));
+  }
 }

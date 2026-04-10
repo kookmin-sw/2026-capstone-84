@@ -4,6 +4,7 @@ import Database from 'better-sqlite3';
 import { createDatabase, migrate } from '../../db';
 import { RoomService } from '../../services/room.service';
 import { MessageService } from '../../services/message.service';
+import { AuthService } from '../../services/auth.service';
 import { createRoomRouter } from '../rooms';
 
 function createApp() {
@@ -15,6 +16,19 @@ function createApp() {
   app.use(express.json());
   app.use('/api/rooms', createRoomRouter(roomService, messageService));
   return { app, db, roomService, messageService };
+}
+
+function createAppWithAuth() {
+  const db = createDatabase(':memory:');
+  migrate(db);
+  const roomService = new RoomService(db);
+  const messageService = new MessageService(db);
+  const authService = new AuthService(db);
+  const mockIo = { emit: jest.fn() } as any;
+  const app = express();
+  app.use(express.json());
+  app.use('/api/rooms', createRoomRouter(roomService, messageService, authService, mockIo));
+  return { app, db, roomService, messageService, authService, mockIo };
 }
 
 describe('REST API - /api/rooms', () => {
@@ -167,5 +181,125 @@ describe('REST API - /api/rooms', () => {
       expect(res.status).toBe(200);
       expect(res.body).toEqual([]);
     });
+  });
+});
+
+// --- DELETE /api/rooms/:roomId (대화방 삭제 - 관리자 전용) ---
+
+describe('DELETE /api/rooms/:roomId', () => {
+  let db: Database.Database;
+  let app: express.Express;
+  let authService: AuthService;
+  let mockIo: any;
+
+  beforeEach(() => {
+    const ctx = createAppWithAuth();
+    app = ctx.app;
+    db = ctx.db;
+    authService = ctx.authService;
+    mockIo = ctx.mockIo;
+  });
+
+  afterEach(() => {
+    db.close();
+  });
+
+  async function getAdminToken(): Promise<string> {
+    authService.ensureAdminExists();
+    const result = await authService.login('admin', 'admin1234');
+    return result.token;
+  }
+
+  async function getUserToken(): Promise<string> {
+    const result = await authService.register('testuser', 'password123', 'Test User');
+    return result.token;
+  }
+
+  test('관리자가 대화방 삭제 시 200 응답 (Req 4.3)', async () => {
+    const token = await getAdminToken();
+    const createRes = await request(app)
+      .post('/api/rooms')
+      .send({ title: 'Room', topic: 'Topic', creatorId: 'u1', creatorName: 'Alice' });
+
+    const res = await request(app)
+      .delete(`/api/rooms/${createRes.body.id}`)
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.message).toBe('Room deleted');
+  });
+
+  test('삭제 후 대화방 조회 시 404 반환 (Req 4.3)', async () => {
+    const token = await getAdminToken();
+    const createRes = await request(app)
+      .post('/api/rooms')
+      .send({ title: 'Room', topic: 'Topic', creatorId: 'u1', creatorName: 'Alice' });
+
+    await request(app)
+      .delete(`/api/rooms/${createRes.body.id}`)
+      .set('Authorization', `Bearer ${token}`);
+
+    const getRes = await request(app).get(`/api/rooms/${createRes.body.id}`);
+    expect(getRes.status).toBe(404);
+  });
+
+  test('삭제 후 Socket.IO room:deleted 이벤트 브로드캐스트 (Req 4.6)', async () => {
+    const token = await getAdminToken();
+    const createRes = await request(app)
+      .post('/api/rooms')
+      .send({ title: 'Room', topic: 'Topic', creatorId: 'u1', creatorName: 'Alice' });
+
+    await request(app)
+      .delete(`/api/rooms/${createRes.body.id}`)
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(mockIo.emit).toHaveBeenCalledWith('room:deleted', { roomId: createRes.body.id });
+  });
+
+  test('존재하지 않는 대화방 삭제 시 404 응답', async () => {
+    const token = await getAdminToken();
+
+    const res = await request(app)
+      .delete('/api/rooms/nonexistent-id')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(404);
+    expect(res.body.error).toBe('Room not found');
+  });
+
+  test('토큰 없이 삭제 시 403 응답 (게스트 - Req 4.5)', async () => {
+    const createRes = await request(app)
+      .post('/api/rooms')
+      .send({ title: 'Room', topic: 'Topic', creatorId: 'u1', creatorName: 'Alice' });
+
+    const res = await request(app)
+      .delete(`/api/rooms/${createRes.body.id}`);
+
+    expect(res.status).toBe(403);
+  });
+
+  test('일반 사용자가 삭제 시 403 응답 (Req 4.5)', async () => {
+    const token = await getUserToken();
+    const createRes = await request(app)
+      .post('/api/rooms')
+      .send({ title: 'Room', topic: 'Topic', creatorId: 'u1', creatorName: 'Alice' });
+
+    const res = await request(app)
+      .delete(`/api/rooms/${createRes.body.id}`)
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(403);
+  });
+
+  test('유효하지 않은 토큰으로 삭제 시 401 응답 (Req 5.4)', async () => {
+    const createRes = await request(app)
+      .post('/api/rooms')
+      .send({ title: 'Room', topic: 'Topic', creatorId: 'u1', creatorName: 'Alice' });
+
+    const res = await request(app)
+      .delete(`/api/rooms/${createRes.body.id}`)
+      .set('Authorization', 'Bearer invalid-token');
+
+    expect(res.status).toBe(401);
   });
 });

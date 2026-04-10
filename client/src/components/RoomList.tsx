@@ -3,9 +3,11 @@ import RoomCard from './RoomCard';
 
 interface RoomListProps {
   rooms: ChatRoomSummary[];
+  role?: 'admin' | 'user' | 'guest';
+  onDelete?: (roomId: string) => void;
 }
 
-export default function RoomList({ rooms }: RoomListProps) {
+export default function RoomList({ rooms, role, onDelete }: RoomListProps) {
   if (rooms.length === 0) {
     return (
       <p style={{ textAlign: 'center', color: '#888', padding: '32px 0' }}>
@@ -17,7 +19,7 @@ export default function RoomList({ rooms }: RoomListProps) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
       {rooms.map((room) => (
-        <RoomCard key={room.id} room={room} />
+        <RoomCard key={room.id} room={room} role={role} onDelete={onDelete} />
       ))}
     </div>
   );

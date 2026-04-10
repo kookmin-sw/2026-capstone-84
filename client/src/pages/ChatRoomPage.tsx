@@ -89,14 +89,23 @@ export default function ChatRoomPage({ userId, userName }: ChatRoomPageProps) {
       setNotifications((prev) => [...prev, { id, text: `${payload.userName}님이 퇴장했습니다.` }]);
     };
 
+    const handleRoomDeleted = (payload: { roomId: string }) => {
+      if (payload.roomId === roomId) {
+        alert('이 대화방이 삭제되었습니다.');
+        navigate('/');
+      }
+    };
+
     socket.on('message:new', handleNewMessage);
     socket.on('room:user-joined', handleUserJoined);
     socket.on('room:user-left', handleUserLeft);
+    socket.on('room:deleted', handleRoomDeleted);
 
     return () => {
       socket.off('message:new', handleNewMessage);
       socket.off('room:user-joined', handleUserJoined);
       socket.off('room:user-left', handleUserLeft);
+      socket.off('room:deleted', handleRoomDeleted);
     };
   }, [socket, roomId, loading, error, userId, userName]);
 
@@ -182,20 +191,36 @@ export default function ChatRoomPage({ userId, userName }: ChatRoomPageProps) {
           <h2 style={{ margin: 0 }}>{room.title}</h2>
           <p style={{ margin: '4px 0 0 0', fontSize: '0.85rem', color: '#666' }}>{room.topic}</p>
         </div>
-        <button
-          onClick={handleLeave}
-          style={{
-            padding: '8px 16px',
-            borderRadius: '4px',
-            border: '1px solid #d9534f',
-            backgroundColor: '#fff',
-            color: '#d9534f',
-            cursor: 'pointer',
-            fontSize: '0.9rem',
-          }}
-        >
-          퇴장
-        </button>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button
+            onClick={() => navigate('/')}
+            style={{
+              padding: '8px 16px',
+              borderRadius: '4px',
+              border: '1px solid #ccc',
+              backgroundColor: '#fff',
+              color: '#333',
+              cursor: 'pointer',
+              fontSize: '0.9rem',
+            }}
+          >
+            목록으로
+          </button>
+          <button
+            onClick={handleLeave}
+            style={{
+              padding: '8px 16px',
+              borderRadius: '4px',
+              border: '1px solid #d9534f',
+              backgroundColor: '#fff',
+              color: '#d9534f',
+              cursor: 'pointer',
+              fontSize: '0.9rem',
+            }}
+          >
+            퇴장
+          </button>
+        </div>
       </div>
 
       {/* Body */}

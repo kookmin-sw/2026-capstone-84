@@ -35,3 +35,35 @@ export interface Participant {
   userName: string;
   joinedAt: Date;
 }
+
+/** 사용자 계정 엔티티 */
+export interface UserAccount {
+  id: string;
+  username: string;
+  passwordHash: string;
+  displayName: string;
+  role: 'user' | 'admin';
+  createdAt: Date;
+}
+
+/** JWT 페이로드 */
+export interface AuthPayload {
+  userId: string;
+  username: string;
+  displayName: string;
+  role: 'user' | 'admin';
+}
+
+/** 클라이언트에 반환되는 사용자 정보 (비밀번호 제외) */
+export interface AuthUser {
+  id: string;
+  username: string;
+  displayName: string;
+  role: 'user' | 'admin';
+}
+
+/** 로그인/회원가입 응답 */
+export interface AuthResponse {
+  token: string;
+  user: AuthUser;
+}

@@ -2,9 +2,10 @@ import { useState } from 'react';
 
 interface UserNamePromptProps {
   onSubmit: (name: string) => void;
+  onBack?: () => void;
 }
 
-export default function UserNamePrompt({ onSubmit }: UserNamePromptProps) {
+export default function UserNamePrompt({ onSubmit, onBack }: UserNamePromptProps) {
   const [name, setName] = useState('');
   const [error, setError] = useState('');
 
@@ -43,6 +44,21 @@ export default function UserNamePrompt({ onSubmit }: UserNamePromptProps) {
         <p style={{ color: '#666', marginBottom: '20px', fontSize: '0.9rem' }}>
           사용할 이름을 입력해주세요.
         </p>
+        <div
+          role="alert"
+          style={{
+            backgroundColor: '#fff3cd',
+            border: '1px solid #ffc107',
+            borderRadius: '4px',
+            padding: '12px',
+            fontSize: '0.85rem',
+            color: '#856404',
+            marginBottom: '16px',
+            textAlign: 'left',
+          }}
+        >
+          게스트 계정은 현재 사용 중인 브라우저에서만 유지됩니다. 브라우저의 인터넷 사용 기록을 삭제하면 이전에 참여했던 대화방을 다시 찾을 수 없습니다. 대화 기록을 안전하게 보관하려면 회원가입을 권장합니다.
+        </div>
         <input
           type="text"
           placeholder="이름 입력"
@@ -83,6 +99,25 @@ export default function UserNamePrompt({ onSubmit }: UserNamePromptProps) {
         >
           시작하기
         </button>
+        {onBack && (
+          <button
+            type="button"
+            onClick={onBack}
+            style={{
+              width: '100%',
+              padding: '10px',
+              borderRadius: '4px',
+              border: '1px solid #ccc',
+              backgroundColor: '#fff',
+              color: '#333',
+              fontSize: '1rem',
+              cursor: 'pointer',
+              marginTop: '8px',
+            }}
+          >
+            로그인으로 돌아가기
+          </button>
+        )}
       </form>
     </div>
   );

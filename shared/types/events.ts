@@ -39,9 +39,14 @@ export interface ClientToServerEvents {
   'message:send': (payload: MessageSendPayload) => void;
 }
 
+export interface RoomDeletedPayload {
+  roomId: string;
+}
+
 /** Socket.IO Server → Client 이벤트 맵 */
 export interface ServerToClientEvents {
   'message:new': (message: Message) => void;
   'room:user-joined': (payload: UserJoinedPayload) => void;
   'room:user-left': (payload: UserLeftPayload) => void;
+  'room:deleted': (payload: RoomDeletedPayload) => void;
 }
