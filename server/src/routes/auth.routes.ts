@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { authService, AppError } from '../services/auth.service';
 import { SignupSchema, LoginSchema } from '../validators';
+import { readerPrisma } from '../lib/prisma';
 import { z } from 'zod';
 
 const RefreshSchema = z.object({
@@ -19,10 +20,7 @@ router.get('/check-nickname', async (req: Request, res: Response) => {
       });
       return;
     }
-    const { PrismaClient } = await import('@prisma/client');
-    const prisma = new PrismaClient();
-    const existing = await prisma.user.findFirst({ where: { nickname } });
-    await prisma.$disconnect();
+    const existing = await readerPrisma.user.findFirst({ where: { nickname } });
     res.json({ available: !existing });
   } catch (err) {
     if (err instanceof AppError) {

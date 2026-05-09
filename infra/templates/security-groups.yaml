@@ -1,0 +1,155 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Security Groups for Book Discussion Platform.
+  Defines security groups for ALB, EC2, Aurora, Redis, and OpenSearch
+  with least-privilege ingress rules referencing other security groups.
+  Requirements: 7.3, 7.4, 7.5
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Default: bookclub
+    Description: Environment name prefix for resource naming (must match VPC stack)
+
+Resources:
+  # ============================================================
+  # SG-ALB: Application Load Balancer Security Group
+  # Allows inbound HTTPS (443) and HTTP (80) from the internet
+  # ============================================================
+  ALBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for Application Load Balancer - allows HTTP/HTTPS from internet
+      VpcId: !ImportValue
+        Fn::Sub: '${EnvironmentName}-VpcId'
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+          Description: Allow HTTPS from internet
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+          Description: Allow HTTP from internet (for redirect to HTTPS)
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-sg-alb'
+
+  # ============================================================
+  # SG-EC2: EC2 Application Instances Security Group
+  # Allows inbound on port 3000 only from ALB security group
+  # ============================================================
+  EC2SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for EC2 application instances - allows traffic from ALB only
+      VpcId: !ImportValue
+        Fn::Sub: '${EnvironmentName}-VpcId'
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3000
+          ToPort: 3000
+          SourceSecurityGroupId: !Ref ALBSecurityGroup
+          Description: Allow application traffic from ALB
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-sg-ec2'
+
+  # ============================================================
+  # SG-Aurora: Aurora MySQL Database Security Group
+  # Allows inbound on port 3306 only from EC2 security group
+  # Requirement: 7.3
+  # ============================================================
+  AuroraSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for Aurora MySQL - allows traffic from EC2 instances only
+      VpcId: !ImportValue
+        Fn::Sub: '${EnvironmentName}-VpcId'
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          SourceSecurityGroupId: !Ref EC2SecurityGroup
+          Description: Allow MySQL traffic from EC2 instances
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-sg-aurora'
+
+  # ============================================================
+  # SG-Redis: ElastiCache Redis Security Group
+  # Allows inbound on port 6379 only from EC2 security group
+  # Requirement: 7.4
+  # ============================================================
+  RedisSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for ElastiCache Redis - allows traffic from EC2 instances only
+      VpcId: !ImportValue
+        Fn::Sub: '${EnvironmentName}-VpcId'
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 6379
+          ToPort: 6379
+          SourceSecurityGroupId: !Ref EC2SecurityGroup
+          Description: Allow Redis traffic from EC2 instances
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-sg-redis'
+
+  # ============================================================
+  # SG-OpenSearch: OpenSearch Service Security Group
+  # Allows inbound on port 443 only from EC2 security group
+  # Requirement: 7.5
+  # ============================================================
+  OpenSearchSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for OpenSearch Service - allows traffic from EC2 instances only
+      VpcId: !ImportValue
+        Fn::Sub: '${EnvironmentName}-VpcId'
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          SourceSecurityGroupId: !Ref EC2SecurityGroup
+          Description: Allow HTTPS traffic from EC2 instances
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-sg-opensearch'
+
+# ============================================================
+# Outputs (for cross-stack references)
+# ============================================================
+Outputs:
+  ALBSecurityGroupId:
+    Description: Security Group ID for ALB
+    Value: !Ref ALBSecurityGroup
+    Export:
+      Name: !Sub '${EnvironmentName}-ALBSecurityGroupId'
+
+  EC2SecurityGroupId:
+    Description: Security Group ID for EC2 instances
+    Value: !Ref EC2SecurityGroup
+    Export:
+      Name: !Sub '${EnvironmentName}-EC2SecurityGroupId'
+
+  AuroraSecurityGroupId:
+    Description: Security Group ID for Aurora MySQL
+    Value: !Ref AuroraSecurityGroup
+    Export:
+      Name: !Sub '${EnvironmentName}-AuroraSecurityGroupId'
+
+  RedisSecurityGroupId:
+    Description: Security Group ID for ElastiCache Redis
+    Value: !Ref RedisSecurityGroup
+    Export:
+      Name: !Sub '${EnvironmentName}-RedisSecurityGroupId'
+
+  OpenSearchSecurityGroupId:
+    Description: Security Group ID for OpenSearch Service
+    Value: !Ref OpenSearchSecurityGroup
+    Export:
+      Name: !Sub '${EnvironmentName}-OpenSearchSecurityGroupId'

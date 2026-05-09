@@ -6,12 +6,14 @@ import request from 'supertest';
 const mockPrisma = vi.hoisted(() => ({
   user: {
     findUnique: vi.fn(),
+    findFirst: vi.fn(),
     create: vi.fn(),
   },
 }));
 
-vi.mock('@prisma/client', () => ({
-  PrismaClient: vi.fn(() => mockPrisma),
+vi.mock('../lib/prisma', () => ({
+  writerPrisma: mockPrisma,
+  readerPrisma: mockPrisma,
 }));
 
 import authRouter from './auth.routes';

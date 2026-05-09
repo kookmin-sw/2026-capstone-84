@@ -1,12 +1,11 @@
-import { PrismaClient } from '@prisma/client';
+import { writerPrisma, readerPrisma } from '../lib/prisma';
 import { AppError } from './auth.service';
 import { CreateMemoInput, UpdateMemoInput } from '../validators';
-
-const prisma = new PrismaClient();
+import { searchService } from './search.service';
 
 export const memoService = {
   async create(groupId: string, userId: string, data: CreateMemoInput) {
-    const member = await prisma.groupMember.findUnique({
+    const member = await readerPrisma.groupMember.findUnique({
       where: { groupId_userId: { groupId, userId } },
     });
     if (!member) {
@@ -20,7 +19,7 @@ export const memoService = {
       throw new AppError(400, 'INVALID_PAGE_RANGE', `아직 읽지 않은 페이지입니다. 현재 읽은 페이지: ${member.readingProgress}`);
     }
 
-    const memo = await prisma.memo.create({
+    const memo = await writerPrisma.memo.create({
       data: {
         groupId,
         userId,
@@ -35,11 +34,28 @@ export const memoService = {
       },
     });
 
+    // OpenSearch 비동기 인덱싱 (fire-and-forget)
+    readerPrisma.group.findUnique({
+      where: { id: groupId },
+      include: { book: { select: { title: true } } },
+    }).then((group) => {
+      const firstLine = memo.content.split('\n')[0] || '';
+      searchService.indexDocument('memos', memo.id, {
+        type: 'memo',
+        title: firstLine,
+        content: memo.content,
+        authorNickname: memo.user.nickname,
+        bookTitle: group?.book?.title ?? '',
+        groupId,
+        createdAt: memo.createdAt.toISOString(),
+      }).catch(err => console.error('[Search] memo indexing failed:', err));
+    }).catch(err => console.error('[Search] failed to fetch group for memo indexing:', err));
+
     return memo;
   },
 
   async update(memoId: string, userId: string, data: UpdateMemoInput) {
-    const memo = await prisma.memo.findUnique({ where: { id: memoId } });
+    const memo = await readerPrisma.memo.findUnique({ where: { id: memoId } });
     if (!memo) {
       throw new AppError(404, 'NOT_FOUND', '메모를 찾을 수 없습니다');
     }
@@ -58,7 +74,7 @@ export const memoService = {
       updateData.isPublic = data.isPublic;
     }
 
-    const updated = await prisma.memo.update({
+    const updated = await writerPrisma.memo.update({
       where: { id: memoId },
       data: updateData,
       include: {
@@ -66,11 +82,18 @@ export const memoService = {
       },
     });
 
+    // OpenSearch 비동기 인덱스 업데이트 (fire-and-forget)
+    const firstLine = updated.content.split('\n')[0] || '';
+    searchService.updateDocument('memos', memoId, {
+      title: firstLine,
+      content: updated.content,
+    }).catch(err => console.error('[Search] memo update indexing failed:', err));
+
     return updated;
   },
 
   async delete(memoId: string, userId: string) {
-    const memo = await prisma.memo.findUnique({ where: { id: memoId } });
+    const memo = await readerPrisma.memo.findUnique({ where: { id: memoId } });
     if (!memo) {
       throw new AppError(404, 'NOT_FOUND', '메모를 찾을 수 없습니다');
     }
@@ -78,11 +101,15 @@ export const memoService = {
       throw new AppError(403, 'FORBIDDEN', '본인의 메모만 삭제할 수 있습니다');
     }
 
-    await prisma.memo.delete({ where: { id: memoId } });
+    await writerPrisma.memo.delete({ where: { id: memoId } });
+
+    // OpenSearch 비동기 인덱스 삭제 (fire-and-forget)
+    searchService.deleteDocument('memos', memoId)
+      .catch(err => console.error('[Search] memo delete from index failed:', err));
   },
 
   async updateVisibility(memoId: string, userId: string, visibility: string) {
-    const memo = await prisma.memo.findUnique({ where: { id: memoId } });
+    const memo = await readerPrisma.memo.findUnique({ where: { id: memoId } });
     if (!memo) {
       throw new AppError(404, 'NOT_FOUND', '메모를 찾을 수 없습니다');
     }
@@ -92,7 +119,7 @@ export const memoService = {
 
     // 비공개/스포일러 → 공개 전환 시, 본인의 독서 진행도가 메모의 pageEnd 이상이어야 함
     if (visibility === 'public' && memo.visibility !== 'public') {
-      const member = await prisma.groupMember.findUnique({
+      const member = await readerPrisma.groupMember.findUnique({
         where: { groupId_userId: { groupId: memo.groupId, userId } },
       });
       if (!member) {
@@ -105,7 +132,7 @@ export const memoService = {
 
     const isPublic = visibility === 'public';
 
-    const updated = await prisma.memo.update({
+    const updated = await writerPrisma.memo.update({
       where: { id: memoId },
       data: { visibility, isPublic },
       include: {
@@ -117,7 +144,7 @@ export const memoService = {
   },
 
   async listByGroup(groupId: string, userId: string) {
-    const member = await prisma.groupMember.findUnique({
+    const member = await readerPrisma.groupMember.findUnique({
       where: { groupId_userId: { groupId, userId } },
     });
     if (!member) {
@@ -127,7 +154,7 @@ export const memoService = {
     const readingProgress = member.readingProgress;
 
     // 본인 메모 전부 + 타인의 public/spoiler 메모 (private 제외)
-    const memos = await prisma.memo.findMany({
+    const memos = await readerPrisma.memo.findMany({
       where: {
         groupId,
         OR: [

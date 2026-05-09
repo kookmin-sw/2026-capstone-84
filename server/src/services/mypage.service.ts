@@ -1,12 +1,10 @@
-import { PrismaClient } from '@prisma/client';
+import { writerPrisma, readerPrisma } from '../lib/prisma';
 import bcrypt from 'bcrypt';
 import { AppError } from './auth.service';
 
-const prisma = new PrismaClient();
-
 export const mypageService = {
   async getProfile(userId: string) {
-    const user = await prisma.user.findUnique({ where: { id: userId } });
+    const user = await readerPrisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new AppError(404, 'NOT_FOUND', '사용자를 찾을 수 없습니다');
     return {
       id: user.id,
@@ -19,7 +17,7 @@ export const mypageService = {
   },
 
   async getMyGroups(userId: string) {
-    const memberships = await prisma.groupMember.findMany({
+    const memberships = await readerPrisma.groupMember.findMany({
       where: { userId },
       orderBy: { joinedAt: 'desc' },
       include: {
@@ -56,7 +54,7 @@ export const mypageService = {
   },
 
   async getMyMemos(userId: string) {
-    const memos = await prisma.memo.findMany({
+    const memos = await readerPrisma.memo.findMany({
       where: { userId },
       orderBy: { createdAt: 'desc' },
       include: {
@@ -83,7 +81,7 @@ export const mypageService = {
   },
 
   async checkNickname(nickname: string, userId?: string) {
-    const existing = await prisma.user.findFirst({
+    const existing = await readerPrisma.user.findFirst({
       where: {
         nickname,
         ...(userId ? { NOT: { id: userId } } : {}),
@@ -93,14 +91,14 @@ export const mypageService = {
   },
 
   async updateNickname(userId: string, nickname: string) {
-    const existing = await prisma.user.findFirst({
+    const existing = await readerPrisma.user.findFirst({
       where: { nickname, NOT: { id: userId } },
     });
     if (existing) {
       throw new AppError(409, 'DUPLICATE_NICKNAME', '이미 사용 중인 닉네임입니다');
     }
 
-    const user = await prisma.user.update({
+    const user = await writerPrisma.user.update({
       where: { id: userId },
       data: { nickname },
     });
@@ -113,7 +111,7 @@ export const mypageService = {
   },
 
   async getMyDiscussions(userId: string) {
-    const discussions = await prisma.discussion.findMany({
+    const discussions = await readerPrisma.discussion.findMany({
       where: { authorId: userId },
       orderBy: { createdAt: 'desc' },
       include: {
@@ -141,7 +139,7 @@ export const mypageService = {
 
   async getRecommendedGroups(userId: string) {
     // 내가 참여한 모임의 책 정보 가져오기
-    const myMemberships = await prisma.groupMember.findMany({
+    const myMemberships = await readerPrisma.groupMember.findMany({
       where: { userId },
       select: { groupId: true },
     });
@@ -149,7 +147,7 @@ export const mypageService = {
 
     if (myGroupIds.length === 0) return [];
 
-    const myGroups = await prisma.group.findMany({
+    const myGroups = await readerPrisma.group.findMany({
       where: { id: { in: myGroupIds } },
       include: { book: true },
     });
@@ -163,7 +161,7 @@ export const mypageService = {
     }
 
     // 내가 참여하지 않은 모임 중 아직 인원이 안 찬 모임
-    const candidateGroups = await prisma.group.findMany({
+    const candidateGroups = await readerPrisma.group.findMany({
       where: {
         id: { notIn: myGroupIds },
       },
@@ -222,7 +220,7 @@ export const mypageService = {
   },
 
   async updateProfileImage(userId: string, profileImageUrl: string) {
-    const user = await prisma.user.update({
+    const user = await writerPrisma.user.update({
       where: { id: userId },
       data: { profileImageUrl: profileImageUrl || null },
     });
@@ -230,7 +228,7 @@ export const mypageService = {
   },
 
   async changePassword(userId: string, currentPassword: string, newPassword: string) {
-    const user = await prisma.user.findUnique({ where: { id: userId } });
+    const user = await readerPrisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new AppError(404, 'NOT_FOUND', '사용자를 찾을 수 없습니다');
     if (!user.passwordHash) throw new AppError(400, 'SOCIAL_ACCOUNT', '소셜 로그인 계정은 비밀번호를 변경할 수 없습니다');
 
@@ -238,14 +236,14 @@ export const mypageService = {
     if (!isValid) throw new AppError(401, 'INVALID_CREDENTIALS', '현재 비밀번호가 올바르지 않습니다');
 
     const newHash = await bcrypt.hash(newPassword, 10);
-    await prisma.user.update({ where: { id: userId }, data: { passwordHash: newHash } });
+    await writerPrisma.user.update({ where: { id: userId }, data: { passwordHash: newHash } });
   },
 
   async softDeleteAccount(userId: string) {
-    const user = await prisma.user.findUnique({ where: { id: userId } });
+    const user = await readerPrisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new AppError(404, 'NOT_FOUND', '사용자를 찾을 수 없습니다');
 
-    await prisma.user.update({
+    await writerPrisma.user.update({
       where: { id: userId },
       data: {
         isDeleted: true,

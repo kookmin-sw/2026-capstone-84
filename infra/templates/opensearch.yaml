@@ -1,0 +1,137 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  OpenSearch Service Domain for Book Discussion Platform.
+  Creates an OpenSearch domain with Nori analyzer plugin for Korean text analysis,
+  deployed in private subnets with VPC endpoint access.
+  Requirements: 4.2, 4.7
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Default: bookclub
+    Description: Environment name prefix for resource naming (must match VPC and security-groups stacks)
+
+  InstanceType:
+    Type: String
+    Default: r6g.large.search
+    Description: OpenSearch instance type
+    AllowedValues:
+      - t3.medium.search
+      - r6g.large.search
+      - r6g.xlarge.search
+      - r6g.2xlarge.search
+
+  InstanceCount:
+    Type: Number
+    Default: 2
+    Description: Number of data nodes in the OpenSearch domain
+    MinValue: 1
+    MaxValue: 10
+
+  EBSVolumeSize:
+    Type: Number
+    Default: 100
+    Description: EBS volume size in GB per data node
+    MinValue: 10
+    MaxValue: 1000
+
+  EngineVersion:
+    Type: String
+    Default: OpenSearch_2.11
+    Description: OpenSearch engine version (must support Nori plugin)
+    AllowedValues:
+      - OpenSearch_2.11
+      - OpenSearch_2.9
+      - OpenSearch_2.7
+
+Resources:
+  # ============================================================
+  # OpenSearch Service-Linked Role
+  # Required for VPC access configuration
+  # ============================================================
+  # Note: The service-linked role AWSServiceRoleForAmazonOpenSearchService
+  # must exist in the account. If deploying for the first time, create it
+  # manually or via: aws iam create-service-linked-role --aws-service-name opensearchservice.amazonaws.com
+
+  # ============================================================
+  # OpenSearch Domain (VPC deployment with Nori analyzer)
+  # Requirements: 4.2 (Nori 분석기), 4.7 (프라이빗 서브넷 배치)
+  # ============================================================
+  OpenSearchDomain:
+    Type: AWS::OpenSearchService::Domain
+    Properties:
+      DomainName: !Sub '${EnvironmentName}-search'
+      EngineVersion: !Ref EngineVersion
+      ClusterConfig:
+        InstanceType: !Ref InstanceType
+        InstanceCount: !Ref InstanceCount
+        DedicatedMasterEnabled: false
+        ZoneAwarenessEnabled: true
+        ZoneAwarenessConfig:
+          AvailabilityZoneCount: 2
+      EBSOptions:
+        EBSEnabled: true
+        VolumeType: gp3
+        VolumeSize: !Ref EBSVolumeSize
+        Iops: 3000
+        Throughput: 125
+      VPCOptions:
+        SubnetIds:
+          - !ImportValue
+            Fn::Sub: '${EnvironmentName}-SearchPrivateSubnet1Id'
+          - !ImportValue
+            Fn::Sub: '${EnvironmentName}-SearchPrivateSubnet2Id'
+        SecurityGroupIds:
+          - !ImportValue
+            Fn::Sub: '${EnvironmentName}-OpenSearchSecurityGroupId'
+      AccessPolicies:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: '*'
+            Action: 'es:*'
+            Resource: !Sub 'arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${EnvironmentName}-search/*'
+      EncryptionAtRestOptions:
+        Enabled: true
+      NodeToNodeEncryptionOptions:
+        Enabled: true
+      DomainEndpointOptions:
+        EnforceHTTPS: true
+        TLSSecurityPolicy: Policy-Min-TLS-1-2-2019-07
+      AdvancedOptions:
+        rest.action.multi.allow_explicit_index: 'true'
+        override_main_response_version: 'false'
+      AdvancedSecurityOptions:
+        Enabled: true
+        InternalUserDatabaseEnabled: true
+        MasterUserOptions:
+          MasterUserName: admin
+          MasterUserPassword: '{{resolve:ssm-secure:/bookclub/opensearch/master-password}}'
+      SoftwareUpdateOptions:
+        AutoSoftwareUpdateEnabled: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-opensearch'
+
+# ============================================================
+# Outputs (for cross-stack references)
+# ============================================================
+Outputs:
+  OpenSearchDomainEndpoint:
+    Description: OpenSearch domain endpoint URL
+    Value: !Sub 'https://${OpenSearchDomain.DomainEndpoint}'
+    Export:
+      Name: !Sub '${EnvironmentName}-OpenSearchEndpoint'
+
+  OpenSearchDomainArn:
+    Description: OpenSearch domain ARN
+    Value: !GetAtt OpenSearchDomain.Arn
+    Export:
+      Name: !Sub '${EnvironmentName}-OpenSearchDomainArn'
+
+  OpenSearchDomainName:
+    Description: OpenSearch domain name
+    Value: !Ref OpenSearchDomain
+    Export:
+      Name: !Sub '${EnvironmentName}-OpenSearchDomainName'

@@ -4,10 +4,13 @@ import { authMiddleware, AuthRequest } from './auth.middleware';
 import { Response, NextFunction } from 'express';
 
 // Mock PrismaClient before importing auth.service
-vi.mock('@prisma/client', () => ({
-  PrismaClient: vi.fn(() => ({
+vi.mock('../lib/prisma', () => ({
+  writerPrisma: {
     user: { findUnique: vi.fn(), create: vi.fn() },
-  })),
+  },
+  readerPrisma: {
+    user: { findUnique: vi.fn(), create: vi.fn() },
+  },
 }));
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-key';
