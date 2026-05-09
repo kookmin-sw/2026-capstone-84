@@ -11,7 +11,11 @@ import discussionRouter from './routes/discussion.routes';
 import mypageRouter from './routes/mypage.routes';
 import dashboardRouter from './routes/dashboard.routes';
 import aiRouter from './routes/ai.routes';
+import searchRouter from './routes/search.routes';
+import healthRouter from './routes/health.routes';
 import { globalErrorHandler } from './middleware/errorHandler';
+import { redisService } from './services/redis.service';
+import { searchService } from './services/search.service';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -36,9 +40,8 @@ app.use(express.json());
 // 업로드 파일 정적 서빙
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
-app.get('/api/health', (_req, res) => {
-  res.json({ status: 'ok' });
-});
+// 헬스체크 라우터 등록
+app.use('/api', healthRouter);
 
 // 라우터 등록
 app.use('/api/auth', authRouter);
@@ -50,6 +53,7 @@ app.use('/api', discussionRouter);
 app.use('/api/me', mypageRouter);
 app.use('/api', dashboardRouter);
 app.use('/api', aiRouter);
+app.use('/api', searchRouter);
 
 // 글로벌 에러 핸들러 (모든 라우터 뒤에 등록)
 app.use(globalErrorHandler);
@@ -63,8 +67,42 @@ if (isProduction) {
   });
 }
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`Server is running on 127.0.0.1:${PORT} (${isProduction ? 'production' : 'development'})`);
+  console.log(`[Redis] 서비스 상태: ${redisService.isEnabled() ? '활성화' : '비활성화'}`);
+  console.log(`[OpenSearch] 서비스 상태: ${searchService.isEnabled() ? '활성화' : '비활성화'}`);
 });
+
+// Graceful shutdown
+const gracefulShutdown = async (signal: string) => {
+  console.log(`\n[${signal}] 서버 종료 시작...`);
+
+  // HTTP 서버 종료 (새 연결 수락 중단)
+  server.close(() => {
+    console.log('[Server] HTTP 서버 종료 완료');
+  });
+
+  // Redis 연결 종료
+  try {
+    await redisService.disconnect();
+    console.log('[Redis] 연결 정리 완료');
+  } catch (err) {
+    console.error('[Redis] 연결 정리 실패:', err);
+  }
+
+  // OpenSearch 연결 종료
+  try {
+    await searchService.disconnect();
+    console.log('[OpenSearch] 연결 정리 완료');
+  } catch (err) {
+    console.error('[OpenSearch] 연결 정리 실패:', err);
+  }
+
+  console.log(`[${signal}] 서버 종료 완료`);
+  process.exit(0);
+};
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 export default app;

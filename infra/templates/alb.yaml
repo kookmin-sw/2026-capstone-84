@@ -1,0 +1,205 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Application Load Balancer for Book Discussion Platform.
+  Creates ALB with HTTPS listener (ACM certificate), HTTP-to-HTTPS redirect,
+  target group with health checks, and WAF WebACL association.
+  Requirements: 1.4, 1.5, 1.6, 7.2, 7.7
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Default: bookclub
+    Description: Environment name prefix for resource naming (must match VPC and security-groups stacks)
+
+  ACMCertificateArn:
+    Type: String
+    Description: ARN of the ACM SSL/TLS certificate for HTTPS listener
+
+Resources:
+  # ============================================================
+  # Application Load Balancer
+  # Requirement: 1.4 - Distribute HTTP/HTTPS requests to healthy instances
+  # ============================================================
+  ApplicationLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Sub '${EnvironmentName}-alb'
+      Scheme: internet-facing
+      Type: application
+      SecurityGroups:
+        - !ImportValue
+            Fn::Sub: '${EnvironmentName}-ALBSecurityGroupId'
+      Subnets:
+        - !ImportValue
+            Fn::Sub: '${EnvironmentName}-PublicSubnet1Id'
+        - !ImportValue
+            Fn::Sub: '${EnvironmentName}-PublicSubnet2Id'
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-alb'
+
+  # ============================================================
+  # Target Group
+  # Requirement: 1.5 - Health check on /api/health, remove after 3 failures
+  # ============================================================
+  ALBTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub '${EnvironmentName}-tg'
+      Port: 3000
+      Protocol: HTTP
+      VpcId: !ImportValue
+        Fn::Sub: '${EnvironmentName}-VpcId'
+      TargetType: instance
+      HealthCheckEnabled: true
+      HealthCheckPath: /api/health
+      HealthCheckProtocol: HTTP
+      HealthCheckPort: '3000'
+      HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 3
+      Matcher:
+        HttpCode: '200'
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-target-group'
+
+  # ============================================================
+  # HTTPS Listener (port 443)
+  # Requirement: 1.6, 7.7 - HTTPS only with ACM certificate
+  # ============================================================
+  HTTPSListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      Port: 443
+      Protocol: HTTPS
+      SslPolicy: ELBSecurityPolicy-TLS13-1-2-2021-06
+      Certificates:
+        - CertificateArn: !Ref ACMCertificateArn
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref ALBTargetGroup
+
+  # ============================================================
+  # HTTP Listener (port 80) - Redirect to HTTPS
+  # Requirement: 1.6 - HTTP(80) requests redirect to HTTPS
+  # ============================================================
+  HTTPListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - Type: redirect
+          RedirectConfig:
+            Protocol: HTTPS
+            Port: '443'
+            StatusCode: HTTP_301
+
+  # ============================================================
+  # WAF WebACL
+  # Requirement: 7.2 - WAF rules to block malicious requests
+  # ============================================================
+  WAFWebACL:
+    Type: AWS::WAFv2::WebACL
+    Properties:
+      Name: !Sub '${EnvironmentName}-web-acl'
+      Scope: REGIONAL
+      DefaultAction:
+        Allow: {}
+      VisibilityConfig:
+        SampledRequestsEnabled: true
+        CloudWatchMetricsEnabled: true
+        MetricName: !Sub '${EnvironmentName}-web-acl-metrics'
+      Rules:
+        # Rule 1: SQL Injection Protection
+        - Name: AWSManagedRulesSQLiRuleSet
+          Priority: 1
+          OverrideAction:
+            None: {}
+          Statement:
+            ManagedRuleGroupStatement:
+              VendorName: AWS
+              Name: AWSManagedRulesSQLiRuleSet
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: !Sub '${EnvironmentName}-sqli-rule-metrics'
+
+        # Rule 2: XSS (Cross-Site Scripting) Protection
+        - Name: AWSManagedRulesCommonRuleSet
+          Priority: 2
+          OverrideAction:
+            None: {}
+          Statement:
+            ManagedRuleGroupStatement:
+              VendorName: AWS
+              Name: AWSManagedRulesCommonRuleSet
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: !Sub '${EnvironmentName}-common-rule-metrics'
+
+        # Rule 3: Rate Limiting (2000 requests per 5 minutes per IP)
+        - Name: RateLimitRule
+          Priority: 3
+          Action:
+            Block: {}
+          Statement:
+            RateBasedStatement:
+              Limit: 2000
+              AggregateKeyType: IP
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: !Sub '${EnvironmentName}-rate-limit-metrics'
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-web-acl'
+
+  # ============================================================
+  # WAF WebACL Association with ALB
+  # Requirement: 7.2 - Associate WAF with ALB
+  # ============================================================
+  WAFWebACLAssociation:
+    Type: AWS::WAFv2::WebACLAssociation
+    Properties:
+      ResourceArn: !Ref ApplicationLoadBalancer
+      WebACLArn: !GetAtt WAFWebACL.Arn
+
+# ============================================================
+# Outputs (for cross-stack references)
+# ============================================================
+Outputs:
+  ALBArn:
+    Description: ARN of the Application Load Balancer
+    Value: !Ref ApplicationLoadBalancer
+    Export:
+      Name: !Sub '${EnvironmentName}-ALBArn'
+
+  ALBDnsName:
+    Description: DNS name of the Application Load Balancer
+    Value: !GetAtt ApplicationLoadBalancer.DNSName
+    Export:
+      Name: !Sub '${EnvironmentName}-ALBDnsName'
+
+  TargetGroupArn:
+    Description: ARN of the ALB Target Group
+    Value: !Ref ALBTargetGroup
+    Export:
+      Name: !Sub '${EnvironmentName}-TargetGroupArn'
+
+  HTTPSListenerArn:
+    Description: ARN of the HTTPS Listener
+    Value: !Ref HTTPSListener
+    Export:
+      Name: !Sub '${EnvironmentName}-HTTPSListenerArn'
+
+  WAFWebACLArn:
+    Description: ARN of the WAF WebACL
+    Value: !GetAtt WAFWebACL.Arn
+    Export:
+      Name: !Sub '${EnvironmentName}-WAFWebACLArn'

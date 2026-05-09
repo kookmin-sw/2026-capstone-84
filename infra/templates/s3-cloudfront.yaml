@@ -1,0 +1,276 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  S3 Buckets and CloudFront Distribution for Book Discussion Platform.
+  Creates two S3 buckets (uploads and assets), CloudFront OAI,
+  bucket policies, and a CloudFront distribution with custom domain support.
+  Requirements: 5.2, 5.4, 5.5, 5.7
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Default: bookclub
+    Description: Environment name prefix for resource naming
+
+  DomainName:
+    Type: String
+    Default: ''
+    Description: Custom domain name for CloudFront distribution (optional, e.g., cdn.bookclub.example.com)
+
+  CertificateArn:
+    Type: String
+    Default: ''
+    Description: ARN of the ACM certificate for custom domain (optional, required if DomainName is set)
+
+Conditions:
+  HasCustomDomain: !Not [!Equals [!Ref DomainName, '']]
+  HasCertificate: !Not [!Equals [!Ref CertificateArn, '']]
+  UseCustomDomainAndCert: !And
+    - !Condition HasCustomDomain
+    - !Condition HasCertificate
+
+Resources:
+  # ============================================================
+  # CloudFront Origin Access Identity
+  # Requirement: 5.7 - Only CloudFront OAI can access S3 directly
+  # ============================================================
+  CloudFrontOAI:
+    Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
+    Properties:
+      CloudFrontOriginAccessIdentityConfig:
+        Comment: !Sub 'OAI for ${EnvironmentName} S3 buckets'
+
+  # ============================================================
+  # S3 Bucket - Uploads (user-uploaded images)
+  # Requirement: 5.2 - Store user upload images (profile pics, book covers)
+  # ============================================================
+  UploadsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${EnvironmentName}-uploads-${AWS::AccountId}'
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: TransitionToIA
+            Status: Enabled
+            Transitions:
+              - StorageClass: STANDARD_IA
+                TransitionInDays: 90
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-uploads'
+        - Key: Purpose
+          Value: User uploaded images
+
+  # ============================================================
+  # S3 Bucket - Assets (static frontend files)
+  # Requirement: 5.2 - Store React build output (static files)
+  # ============================================================
+  AssetsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${EnvironmentName}-assets-${AWS::AccountId}'
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-assets'
+        - Key: Purpose
+          Value: Static frontend assets
+
+  # ============================================================
+  # Bucket Policy - Uploads (CloudFront OAI access only)
+  # Requirement: 5.7 - Only CloudFront OAI can access S3 directly
+  # ============================================================
+  UploadsBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref UploadsBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowCloudFrontOAIRead
+            Effect: Allow
+            Principal:
+              CanonicalUser: !GetAtt CloudFrontOAI.S3CanonicalUserId
+            Action: 's3:GetObject'
+            Resource: !Sub '${UploadsBucket.Arn}/*'
+
+  # ============================================================
+  # Bucket Policy - Assets (CloudFront OAI access only)
+  # Requirement: 5.7 - Only CloudFront OAI can access S3 directly
+  # ============================================================
+  AssetsBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref AssetsBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowCloudFrontOAIRead
+            Effect: Allow
+            Principal:
+              CanonicalUser: !GetAtt CloudFrontOAI.S3CanonicalUserId
+            Action: 's3:GetObject'
+            Resource: !Sub '${AssetsBucket.Arn}/*'
+
+  # ============================================================
+  # CloudFront Distribution
+  # Requirement: 5.4 - Serve static files and images from edge locations
+  # Requirement: 5.5 - Custom domain with SSL certificate (HTTPS)
+  # ============================================================
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: !Sub '${EnvironmentName} CDN distribution'
+        DefaultRootObject: index.html
+        PriceClass: PriceClass_200
+        HttpVersion: http2and3
+
+        # Custom domain and SSL certificate (conditional)
+        Aliases: !If
+          - UseCustomDomainAndCert
+          - - !Ref DomainName
+          - !Ref 'AWS::NoValue'
+        ViewerCertificate: !If
+          - UseCustomDomainAndCert
+          - AcmCertificateArn: !Ref CertificateArn
+            SslSupportMethod: sni-only
+            MinimumProtocolVersion: TLSv1.2_2021
+          - CloudFrontDefaultCertificate: true
+            MinimumProtocolVersion: TLSv1.2_2021
+
+        # Origins
+        Origins:
+          # Origin 1: Assets bucket (default)
+          - Id: AssetsOrigin
+            DomainName: !GetAtt AssetsBucket.RegionalDomainName
+            S3OriginConfig:
+              OriginAccessIdentity: !Sub 'origin-access-identity/cloudfront/${CloudFrontOAI}'
+          # Origin 2: Uploads bucket
+          - Id: UploadsOrigin
+            DomainName: !GetAtt UploadsBucket.RegionalDomainName
+            S3OriginConfig:
+              OriginAccessIdentity: !Sub 'origin-access-identity/cloudfront/${CloudFrontOAI}'
+
+        # Default cache behavior → Assets bucket
+        DefaultCacheBehavior:
+          TargetOriginId: AssetsOrigin
+          ViewerProtocolPolicy: redirect-to-https
+          Compress: true
+          AllowedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+          CachedMethods:
+            - GET
+            - HEAD
+          ForwardedValues:
+            QueryString: false
+            Cookies:
+              Forward: none
+          DefaultTTL: 86400
+          MaxTTL: 31536000
+          MinTTL: 0
+
+        # Cache behavior for /uploads/* → Uploads bucket
+        CacheBehaviors:
+          - PathPattern: '/uploads/*'
+            TargetOriginId: UploadsOrigin
+            ViewerProtocolPolicy: redirect-to-https
+            Compress: true
+            AllowedMethods:
+              - GET
+              - HEAD
+              - OPTIONS
+            CachedMethods:
+              - GET
+              - HEAD
+            ForwardedValues:
+              QueryString: false
+              Cookies:
+                Forward: none
+            DefaultTTL: 86400
+            MaxTTL: 31536000
+            MinTTL: 0
+
+        # Custom error responses for SPA support (React Router)
+        CustomErrorResponses:
+          - ErrorCode: 403
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+            ErrorCachingMinTTL: 10
+          - ErrorCode: 404
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+            ErrorCachingMinTTL: 10
+
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-cdn'
+
+# ============================================================
+# Outputs (for cross-stack references)
+# ============================================================
+Outputs:
+  CloudFrontDomainName:
+    Description: CloudFront distribution domain name
+    Value: !GetAtt CloudFrontDistribution.DomainName
+    Export:
+      Name: !Sub '${EnvironmentName}-CloudFrontDomainName'
+
+  CloudFrontDistributionId:
+    Description: CloudFront distribution ID
+    Value: !Ref CloudFrontDistribution
+    Export:
+      Name: !Sub '${EnvironmentName}-CloudFrontDistributionId'
+
+  UploadsBucketName:
+    Description: Name of the uploads S3 bucket
+    Value: !Ref UploadsBucket
+    Export:
+      Name: !Sub '${EnvironmentName}-UploadsBucketName'
+
+  UploadsBucketArn:
+    Description: ARN of the uploads S3 bucket
+    Value: !GetAtt UploadsBucket.Arn
+    Export:
+      Name: !Sub '${EnvironmentName}-UploadsBucketArn'
+
+  AssetsBucketName:
+    Description: Name of the assets S3 bucket
+    Value: !Ref AssetsBucket
+    Export:
+      Name: !Sub '${EnvironmentName}-AssetsBucketName'
+
+  AssetsBucketArn:
+    Description: ARN of the assets S3 bucket
+    Value: !GetAtt AssetsBucket.Arn
+    Export:
+      Name: !Sub '${EnvironmentName}-AssetsBucketArn'
+
+  CloudFrontOAIId:
+    Description: CloudFront Origin Access Identity ID
+    Value: !Ref CloudFrontOAI
+    Export:
+      Name: !Sub '${EnvironmentName}-CloudFrontOAIId'

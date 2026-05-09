@@ -1,8 +1,8 @@
-import { PrismaClient } from '@prisma/client';
+import { writerPrisma, readerPrisma } from '../lib/prisma';
 import { AppError } from './auth.service';
 import { CreateDiscussionInput, CreateCommentInput } from '../validators';
-
-const prisma = new PrismaClient();
+import { redisService } from './redis.service';
+import { searchService } from './search.service';
 
 export interface RecommendedTopic {
   title: string;
@@ -14,7 +14,7 @@ export interface RecommendedTopic {
 export const discussionService = {
   async createTopic(groupId: string, userId: string, data: CreateDiscussionInput) {
     // Verify user is a member of the group
-    const member = await prisma.groupMember.findUnique({
+    const member = await readerPrisma.groupMember.findUnique({
       where: { groupId_userId: { groupId, userId } },
     });
     if (!member) {
@@ -23,7 +23,7 @@ export const discussionService = {
 
     // If memoId is provided, verify it exists and belongs to this group
     if (data.memoId) {
-      const memo = await prisma.memo.findUnique({ where: { id: data.memoId } });
+      const memo = await readerPrisma.memo.findUnique({ where: { id: data.memoId } });
       if (!memo) {
         throw new AppError(404, 'NOT_FOUND', '참조할 메모를 찾을 수 없습니다');
       }
@@ -32,7 +32,7 @@ export const discussionService = {
       }
     }
 
-    const discussion = await prisma.discussion.create({
+    const discussion = await writerPrisma.discussion.create({
       data: {
         groupId,
         authorId: userId,
@@ -47,11 +47,30 @@ export const discussionService = {
       },
     });
 
+    // 캐시 무효화: 해당 그룹의 토론 목록 캐시 삭제
+    await redisService.invalidateCache(`discussions:${groupId}:*`);
+
+    // OpenSearch 비동기 인덱싱 (fire-and-forget)
+    readerPrisma.group.findUnique({
+      where: { id: groupId },
+      include: { book: { select: { title: true } } },
+    }).then((group) => {
+      searchService.indexDocument('discussions', discussion.id, {
+        type: 'discussion',
+        title: discussion.title,
+        content: discussion.content ?? undefined,
+        authorNickname: discussion.author.nickname,
+        bookTitle: group?.book?.title ?? '',
+        groupId,
+        createdAt: discussion.createdAt.toISOString(),
+      }).catch(err => console.error('[Search] discussion indexing failed:', err));
+    }).catch(err => console.error('[Search] failed to fetch group for indexing:', err));
+
     return discussion;
   },
 
   async getById(discussionId: string) {
-    const discussion = await prisma.discussion.findUnique({
+    const discussion = await readerPrisma.discussion.findUnique({
       where: { id: discussionId },
       include: {
         author: { select: { id: true, nickname: true } },
@@ -68,12 +87,23 @@ export const discussionService = {
   },
 
   async listTopics(groupId: string, filter?: { authorId?: string }) {
+    // 캐시 키 생성: 필터가 있으면 authorId 포함
+    const cacheId = filter?.authorId
+      ? `${groupId}:author:${filter.authorId}`
+      : `${groupId}:all`;
+
+    // 캐시에서 조회 시도
+    const cached = await redisService.getCache<any[]>('discussions', cacheId);
+    if (cached) {
+      return cached;
+    }
+
     const where: any = { groupId };
     if (filter?.authorId) {
       where.authorId = filter.authorId;
     }
 
-    const discussions = await prisma.discussion.findMany({
+    const discussions = await readerPrisma.discussion.findMany({
       where,
       orderBy: { createdAt: 'desc' },
       include: {
@@ -83,7 +113,7 @@ export const discussionService = {
       },
     });
 
-    return discussions.map((d: typeof discussions[number]) => ({
+    const result = discussions.map((d: typeof discussions[number]) => ({
       id: d.id,
       groupId: d.groupId,
       authorId: d.authorId,
@@ -96,11 +126,16 @@ export const discussionService = {
       memo: d.memo,
       commentCount: d._count.comments,
     }));
+
+    // 결과를 캐시에 저장 (TTL 300초)
+    await redisService.setCache('discussions', cacheId, result);
+
+    return result;
   },
 
   async addComment(discussionId: string, userId: string, content: string) {
     // Verify discussion exists
-    const discussion = await prisma.discussion.findUnique({
+    const discussion = await readerPrisma.discussion.findUnique({
       where: { id: discussionId },
     });
     if (!discussion) {
@@ -108,14 +143,14 @@ export const discussionService = {
     }
 
     // Verify user is a member of the group
-    const member = await prisma.groupMember.findUnique({
+    const member = await readerPrisma.groupMember.findUnique({
       where: { groupId_userId: { groupId: discussion.groupId, userId } },
     });
     if (!member) {
       throw new AppError(403, 'FORBIDDEN', '모임 참여자만 의견을 작성할 수 있습니다');
     }
 
-    const comment = await prisma.comment.create({
+    const comment = await writerPrisma.comment.create({
       data: {
         discussionId,
         authorId: userId,
@@ -126,12 +161,15 @@ export const discussionService = {
       },
     });
 
+    // 캐시 무효화: 댓글 수가 변경되므로 해당 그룹의 토론 목록 캐시 삭제
+    await redisService.invalidateCache(`discussions:${discussion.groupId}:*`);
+
     return comment;
   },
 
   async addReply(commentId: string, userId: string, content: string) {
     // Verify comment exists
-    const comment = await prisma.comment.findUnique({
+    const comment = await readerPrisma.comment.findUnique({
       where: { id: commentId },
       include: { discussion: true },
     });
@@ -140,14 +178,14 @@ export const discussionService = {
     }
 
     // Verify user is a member of the group
-    const member = await prisma.groupMember.findUnique({
+    const member = await readerPrisma.groupMember.findUnique({
       where: { groupId_userId: { groupId: comment.discussion.groupId, userId } },
     });
     if (!member) {
       throw new AppError(403, 'FORBIDDEN', '모임 참여자만 댓글을 작성할 수 있습니다');
     }
 
-    const reply = await prisma.reply.create({
+    const reply = await writerPrisma.reply.create({
       data: {
         commentId,
         authorId: userId,
@@ -162,14 +200,14 @@ export const discussionService = {
   },
 
   async getComments(discussionId: string) {
-    const discussion = await prisma.discussion.findUnique({
+    const discussion = await readerPrisma.discussion.findUnique({
       where: { id: discussionId },
     });
     if (!discussion) {
       throw new AppError(404, 'NOT_FOUND', '토론 주제를 찾을 수 없습니다');
     }
 
-    const comments = await prisma.comment.findMany({
+    const comments = await readerPrisma.comment.findMany({
       where: { discussionId },
       orderBy: { createdAt: 'asc' },
       include: {
@@ -188,7 +226,7 @@ export const discussionService = {
 
   async getRecommendations(groupId: string): Promise<RecommendedTopic[]> {
     // Fetch public memos in this group
-    const publicMemos = await prisma.memo.findMany({
+    const publicMemos = await readerPrisma.memo.findMany({
       where: { groupId, isPublic: true },
       select: { id: true, content: true },
     });
@@ -247,14 +285,14 @@ export const discussionService = {
 
   async createFromRecommendation(groupId: string, userId: string, recommendation: RecommendedTopic) {
     // Verify user is a member of the group
-    const member = await prisma.groupMember.findUnique({
+    const member = await readerPrisma.groupMember.findUnique({
       where: { groupId_userId: { groupId, userId } },
     });
     if (!member) {
       throw new AppError(403, 'FORBIDDEN', '모임 참여자만 토론 주제를 생성할 수 있습니다');
     }
 
-    const discussion = await prisma.discussion.create({
+    const discussion = await writerPrisma.discussion.create({
       data: {
         groupId,
         authorId: userId,
@@ -268,6 +306,25 @@ export const discussionService = {
         memo: true,
       },
     });
+
+    // 캐시 무효화: 해당 그룹의 토론 목록 캐시 삭제
+    await redisService.invalidateCache(`discussions:${groupId}:*`);
+
+    // OpenSearch 비동기 인덱싱 (fire-and-forget)
+    readerPrisma.group.findUnique({
+      where: { id: groupId },
+      include: { book: { select: { title: true } } },
+    }).then((group) => {
+      searchService.indexDocument('discussions', discussion.id, {
+        type: 'discussion',
+        title: discussion.title,
+        content: discussion.content ?? undefined,
+        authorNickname: discussion.author.nickname,
+        bookTitle: group?.book?.title ?? '',
+        groupId,
+        createdAt: discussion.createdAt.toISOString(),
+      }).catch(err => console.error('[Search] discussion indexing failed:', err));
+    }).catch(err => console.error('[Search] failed to fetch group for indexing:', err));
 
     return discussion;
   },
