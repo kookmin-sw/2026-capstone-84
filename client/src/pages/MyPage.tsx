@@ -4,6 +4,8 @@ import { mypageApi } from '../api/mypage';
 import { aiApi } from '../api/ai';
 import { Markdown } from '../components/Markdown';
 import { useAuthStore } from '../stores/authStore';
+import ReadingStatusTabs from '../components/mypage/ReadingStatusTabs';
+import GroupActivitySection from '../components/mypage/GroupActivitySection';
 import type { GroupCard, Memo, Discussion, User } from '../types';
 
 function MyPage() {
@@ -283,6 +285,12 @@ function MyPage() {
           ))}
         </div>
       )}
+
+      {/* 독서 상태 관리 */}
+      <ReadingStatusTabs />
+
+      {/* 독서토론 그룹 활동 */}
+      <GroupActivitySection groups={groups} />
     </div>
   );
 }

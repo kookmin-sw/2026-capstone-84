@@ -287,6 +287,24 @@ export const groupService = {
       },
     });
 
+    // 독서 상태 자동 추가: 그룹의 책을 "reading" 상태로 추가 (중복 시 무시)
+    try {
+      await writerPrisma.readingStatus.upsert({
+        where: {
+          userId_bookId: { userId, bookId: group.bookId },
+        },
+        update: {},  // 이미 존재하면 아무것도 변경하지 않음
+        create: {
+          userId,
+          bookId: group.bookId,
+          status: 'reading',
+        },
+      });
+    } catch (error) {
+      // 비차단: 독서 상태 추가 실패 시에도 그룹 참여는 성공
+      console.error('[GroupService] 독서 상태 자동 추가 실패:', error);
+    }
+
     // 캐시 무효화: 그룹 정보 캐시 삭제 (멤버 변경)
     await redisService.invalidateCache(`group:${groupId}:*`);
   },
