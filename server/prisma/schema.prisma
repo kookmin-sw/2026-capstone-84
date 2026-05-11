@@ -213,10 +213,11 @@ model DiscussionSchedule {
 model CommunityPost {
   id           String   @id @default(uuid())
   authorId     String   @map("author_id")
-  bookId       String   @map("book_id")
+  bookId       String?  @map("book_id")
   content      String   @db.Text
   category     String?  @db.VarChar(50)
-  pageNumber   Int?     @map("page_number")
+  pageStart    Int?     @map("page_start")
+  pageEnd      Int?     @map("page_end")
   isHidden     Boolean  @default(false) @map("is_hidden")
   likeCount    Int      @default(0) @map("like_count")
   commentCount Int      @default(0) @map("comment_count")
@@ -225,7 +226,7 @@ model CommunityPost {
   updatedAt    DateTime @default(now()) @updatedAt @map("updated_at")
 
   author   User              @relation("CommunityPostAuthor", fields: [authorId], references: [id])
-  book     Book              @relation("CommunityPostBook", fields: [bookId], references: [id])
+  book     Book?             @relation("CommunityPostBook", fields: [bookId], references: [id])
   comments CommunityComment[]
   likes    CommunityLike[]
   reports  CommunityReport[]

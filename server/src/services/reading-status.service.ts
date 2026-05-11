@@ -56,25 +56,48 @@ export const readingStatusService = {
    * 책 추가
    * - userId + bookId unique 제약조건으로 중복 방지
    */
-  async addBook(userId: string, bookId: string, status: ReadingStatusType): Promise<ReadingStatusItem> {
+  async addBook(userId: string, bookId: string, status: ReadingStatusType, bookInfo?: { title?: string; author?: string; coverImageUrl?: string; isbn?: string }): Promise<ReadingStatusItem> {
     if (!bookId || !bookId.trim()) {
       throw new AppError(400, 'VALIDATION_ERROR', '책 ID가 필요합니다');
     }
 
-    // 책 존재 여부 확인
-    const book = await readerPrisma.book.findUnique({
+    // 책 조회: UUID로 먼저 시도, 없으면 ISBN으로 조회, 그래도 없으면 생성
+    let book = await readerPrisma.book.findUnique({
       where: { id: bookId },
       select: { id: true },
     });
 
     if (!book) {
+      // ISBN으로 검색
+      book = await readerPrisma.book.findFirst({
+        where: { isbn: bookId },
+        select: { id: true },
+      });
+    }
+
+    if (!book && bookInfo?.title) {
+      // 책이 DB에 없으면 새로 생성
+      book = await writerPrisma.book.create({
+        data: {
+          title: bookInfo.title,
+          author: bookInfo.author || null,
+          coverImageUrl: bookInfo.coverImageUrl || null,
+          isbn: bookInfo.isbn || bookId,
+        },
+        select: { id: true },
+      });
+    }
+
+    if (!book) {
       throw new AppError(404, 'NOT_FOUND', '책을 찾을 수 없습니다');
     }
+
+    const resolvedBookId = book.id;
 
     // 이미 등록된 책인지 확인
     const existing = await readerPrisma.readingStatus.findUnique({
       where: {
-        userId_bookId: { userId, bookId },
+        userId_bookId: { userId, bookId: resolvedBookId },
       },
     });
 
@@ -83,7 +106,7 @@ export const readingStatusService = {
     }
 
     const created = await writerPrisma.readingStatus.create({
-      data: { userId, bookId, status },
+      data: { userId, bookId: resolvedBookId, status },
       include: {
         book: {
           select: {

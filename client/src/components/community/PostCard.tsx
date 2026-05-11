@@ -2,6 +2,7 @@ import type { CSSProperties } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { CommunityPost } from '../../types';
 import { timeAgo } from '../../utils/timeAgo';
+import { useAuthStore } from '../../stores/authStore';
 
 interface PostCardProps {
   post: CommunityPost;
@@ -18,6 +19,7 @@ const styles: Record<string, CSSProperties> = {
     cursor: 'pointer',
     transition: 'transform 0.15s, box-shadow 0.15s',
     marginBottom: 12,
+    position: 'relative',
   },
   bookTitle: {
     fontSize: 15,
@@ -67,10 +69,30 @@ const styles: Record<string, CSSProperties> = {
     alignItems: 'center',
     gap: 3,
   },
+  editButton: {
+    position: 'absolute' as const,
+    top: 12,
+    right: 12,
+    padding: '4px 10px',
+    fontSize: 12,
+    fontWeight: 600,
+    color: '#667eea',
+    backgroundColor: '#ebf4ff',
+    border: '1px solid #c3dafe',
+    borderRadius: 6,
+    cursor: 'pointer',
+  },
 };
 
 function PostCard({ post, spoilerMasked = false }: PostCardProps) {
   const navigate = useNavigate();
+  const user = useAuthStore((s) => s.user);
+
+  const bookTitle = post.book?.title ?? post.bookTitle ?? '';
+  const bookAuthor = post.book?.author ?? post.bookAuthor ?? '';
+  const bookCoverUrl = post.book?.coverImageUrl ?? post.bookCoverImageUrl ?? '';
+  const authorNickname = post.author?.nickname ?? post.authorNickname ?? '';
+  const isAuthor = user && (user.id === post.authorId || user.id === post.author?.id);
 
   const handleClick = () => {
     navigate(`/community/${post.id}`);
@@ -83,6 +105,11 @@ function PostCard({ post, spoilerMasked = false }: PostCardProps) {
     }
   };
 
+  const handleEdit = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    navigate(`/community/${post.id}?edit=true`);
+  };
+
   return (
     <div
       style={styles.card}
@@ -90,27 +117,46 @@ function PostCard({ post, spoilerMasked = false }: PostCardProps) {
       onKeyDown={handleKeyDown}
       role="article"
       tabIndex={0}
-      aria-label={`${post.bookTitle} - ${post.authorNickname}`}
+      aria-label={`${bookTitle} - ${authorNickname}`}
     >
-      <div style={styles.bookTitle}>
-        📖 {post.bookTitle}
-        {post.bookAuthor && (
-          <span style={{ fontWeight: 400, fontSize: 13, color: '#718096', marginLeft: 6 }}>
-            ({post.bookAuthor})
-          </span>
-        )}
-      </div>
-
-      {spoilerMasked ? (
-        <div style={styles.spoilerMask}>
-          🔒 스포일러 방지: 이 게시글의 내용이 숨겨져 있습니다.
-        </div>
-      ) : (
-        <div style={styles.content}>{post.content}</div>
+      {isAuthor && (
+        <button style={styles.editButton} onClick={handleEdit}>
+          ✏️ 수정
+        </button>
       )}
 
+      <div style={{ display: 'flex', gap: 14 }}>
+        {bookCoverUrl && (
+          <img
+            src={bookCoverUrl}
+            alt={bookTitle}
+            style={{ width: 48, height: 68, objectFit: 'cover', borderRadius: 4, flexShrink: 0 }}
+          />
+        )}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {bookTitle && (
+            <div style={styles.bookTitle}>
+              {!bookCoverUrl && '📖 '}{bookTitle}
+              {bookAuthor && (
+                <span style={{ fontWeight: 400, fontSize: 13, color: '#718096', marginLeft: 6 }}>
+                  ({bookAuthor})
+                </span>
+              )}
+            </div>
+          )}
+
+          {spoilerMasked ? (
+            <div style={styles.spoilerMask}>
+              🔒 스포일러 방지: 이 게시글의 내용이 숨겨져 있습니다.
+            </div>
+          ) : (
+            <div style={styles.content}>{post.content}</div>
+          )}
+        </div>
+      </div>
+
       <div style={styles.meta}>
-        <span style={styles.author}>{post.authorNickname}</span>
+        <span style={styles.author}>{authorNickname}</span>
         <span>{timeAgo(post.createdAt)}</span>
         <div style={styles.stats}>
           <span style={styles.stat}>❤️ {post.likeCount}</span>

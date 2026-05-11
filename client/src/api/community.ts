@@ -6,9 +6,14 @@ import type {
 } from '../types';
 
 export interface CreatePostRequest {
-  bookId: string;
+  bookId?: string;
+  bookTitle?: string;
+  bookAuthor?: string;
+  bookCoverImageUrl?: string;
+  bookIsbn?: string;
   content: string;
-  pageNumber?: number;
+  pageStart?: number;
+  pageEnd?: number;
   category?: string;
 }
 
@@ -47,6 +52,10 @@ export const communityApi = {
   /** 게시글 작성 */
   createPost: (data: CreatePostRequest) =>
     apiClient.post<CommunityPost>('/community/posts', data),
+
+  /** 게시글 수정 */
+  updatePost: (id: string, data: { content?: string; pageStart?: number | null; pageEnd?: number | null; category?: string | null }) =>
+    apiClient.put<CommunityPost>(`/community/posts/${id}`, data),
 
   /** 게시글 삭제 */
   deletePost: (id: string) =>

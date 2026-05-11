@@ -13,9 +13,14 @@ import { CATEGORY_KEYS, CategoryKey, SPOILER_FILTER_MODES, SpoilerFilterMode } f
 // ===== Zod 스키마 =====
 
 const CreatePostSchema = z.object({
-  bookId: z.string().min(1, '책을 선택해주세요'),
+  bookId: z.string().optional(),
+  bookTitle: z.string().optional(),
+  bookAuthor: z.string().optional(),
+  bookCoverImageUrl: z.string().optional(),
+  bookIsbn: z.string().optional(),
   content: z.string().min(1, '글 내용을 입력해주세요'),
-  pageNumber: z.number().int().nonnegative().optional(),
+  pageStart: z.number().int().nonnegative().optional(),
+  pageEnd: z.number().int().nonnegative().optional(),
   category: z.enum(CATEGORY_KEYS as unknown as [string, ...string[]]).optional(),
 });
 
@@ -190,6 +195,48 @@ router.get('/posts', optionalAuthMiddleware, async (req: AuthRequest, res: Respo
 router.get('/posts/:id', optionalAuthMiddleware, async (req: AuthRequest, res: Response) => {
   try {
     const post = await communityPostService.getPostById(req.params.id as string);
+    res.json(post);
+  } catch (err) {
+    if (err instanceof AppError) {
+      res.status(err.statusCode).json({
+        error: { code: err.code, message: err.message },
+      });
+      return;
+    }
+    res.status(500).json({
+      error: { code: 'INTERNAL_ERROR', message: '서버 오류가 발생했습니다' },
+    });
+  }
+});
+
+/**
+ * PUT /api/community/posts/:id
+ * 게시글 수정 (인증 필수, 작성자 확인)
+ */
+router.put('/posts/:id', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const schema = z.object({
+      content: z.string().min(1, '글 내용을 입력해주세요').optional(),
+      pageStart: z.number().int().nonnegative().nullable().optional(),
+      pageEnd: z.number().int().nonnegative().nullable().optional(),
+      category: z.enum(CATEGORY_KEYS as unknown as [string, ...string[]]).nullable().optional(),
+    });
+
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: parsed.error.errors[0].message,
+        },
+      });
+      return;
+    }
+
+    const post = await communityPostService.updatePost(req.params.id as string, req.user!.userId, {
+      ...parsed.data,
+      category: parsed.data.category as CategoryKey | null | undefined,
+    });
     res.json(post);
   } catch (err) {
     if (err instanceof AppError) {

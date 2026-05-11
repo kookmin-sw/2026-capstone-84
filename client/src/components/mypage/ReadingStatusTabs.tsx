@@ -141,9 +141,12 @@ function ReadingStatusTabs() {
 
   const handleBookSelect = async (book: BookSearchResult) => {
     try {
-      // Use isbn as bookId since that's how books are identified
       const res = await readingStatusApi.addBook({
         bookId: book.isbn,
+        bookTitle: book.title,
+        bookAuthor: book.author,
+        bookCoverImageUrl: book.coverImageUrl,
+        bookIsbn: book.isbn,
         status: activeTab,
       });
       setItems((prev) => [...prev, res.data]);

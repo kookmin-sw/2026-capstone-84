@@ -21,6 +21,10 @@ const READING_STATUS_VALUES = ['reading', 'completed', 'want_to_read'] as const;
 
 const AddReadingStatusSchema = z.object({
   bookId: z.string().min(1, '책 ID가 필요합니다'),
+  bookTitle: z.string().optional(),
+  bookAuthor: z.string().optional(),
+  bookCoverImageUrl: z.string().optional(),
+  bookIsbn: z.string().optional(),
   status: z.enum(READING_STATUS_VALUES),
 });
 
@@ -362,6 +366,12 @@ router.post('/reading-status', authMiddleware, async (req: AuthRequest, res: Res
       req.user!.userId,
       parsed.data.bookId,
       parsed.data.status,
+      {
+        title: parsed.data.bookTitle,
+        author: parsed.data.bookAuthor,
+        coverImageUrl: parsed.data.bookCoverImageUrl,
+        isbn: parsed.data.bookIsbn,
+      },
     );
     res.status(201).json(result);
   } catch (err) {

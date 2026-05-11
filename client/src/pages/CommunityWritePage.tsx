@@ -163,13 +163,17 @@ function CommunityWritePage() {
   const accessToken = useAuthStore((s) => s.accessToken);
 
   const [selectedBook, setSelectedBook] = useState<BookSearchResult | null>(null);
+  const [manualBookTitle, setManualBookTitle] = useState('');
+  const [manualBookAuthor, setManualBookAuthor] = useState('');
+  const [manualMode, setManualMode] = useState(false);
   const [content, setContent] = useState('');
-  const [pageNumber, setPageNumber] = useState('');
+  const [pageStart, setPageStart] = useState('');
+  const [pageEnd, setPageEnd] = useState('');
   const [category, setCategory] = useState('');
   const [showBookModal, setShowBookModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  const [errors, setErrors] = useState<{ book?: string; content?: string }>({});
+  const [errors, setErrors] = useState<{ book?: string; content?: string; pageEnd?: string }>({});
 
   // Redirect if not logged in
   if (!accessToken) {
@@ -178,12 +182,12 @@ function CommunityWritePage() {
   }
 
   const validate = (): boolean => {
-    const newErrors: { book?: string; content?: string } = {};
-    if (!selectedBook) {
-      newErrors.book = '책을 선택해주세요';
-    }
+    const newErrors: { book?: string; content?: string; pageEnd?: string } = {};
     if (!content.trim()) {
       newErrors.content = '글 내용을 입력해주세요';
+    }
+    if (pageStart && pageEnd && parseInt(pageEnd) < parseInt(pageStart)) {
+      newErrors.pageEnd = '끝 페이지는 시작 페이지 이상이어야 합니다';
     }
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -196,10 +200,27 @@ function CommunityWritePage() {
 
     setSubmitting(true);
     try {
+      const bookData = manualMode
+        ? {
+            bookId: undefined,
+            bookTitle: manualBookTitle.trim() || undefined,
+            bookAuthor: manualBookAuthor.trim() || undefined,
+            bookCoverImageUrl: undefined,
+            bookIsbn: undefined,
+          }
+        : {
+            bookId: selectedBook?.isbn,
+            bookTitle: selectedBook?.title,
+            bookAuthor: selectedBook?.author,
+            bookCoverImageUrl: selectedBook?.coverImageUrl,
+            bookIsbn: selectedBook?.isbn,
+          };
+
       await communityApi.createPost({
-        bookId: selectedBook!.isbn,
+        ...bookData,
         content: content.trim(),
-        pageNumber: pageNumber ? parseInt(pageNumber, 10) : undefined,
+        pageStart: pageStart ? parseInt(pageStart, 10) : undefined,
+        pageEnd: pageEnd ? parseInt(pageEnd, 10) : undefined,
         category: category || undefined,
       });
       navigate('/community');
@@ -227,36 +248,80 @@ function CommunityWritePage() {
         {/* Book Selection */}
         <div style={styles.formGroup}>
           <label style={styles.label}>
-            책 선택<span style={styles.required}>*</span>
+            책 (선택)
           </label>
-          {selectedBook ? (
-            <div
-              style={styles.bookSelected}
-              onClick={() => setShowBookModal(true)}
-              role="button"
-              tabIndex={0}
-              onKeyDown={(e) => e.key === 'Enter' && setShowBookModal(true)}
-            >
-              {selectedBook.coverImageUrl && (
-                <img
-                  src={selectedBook.coverImageUrl}
-                  alt={selectedBook.title}
-                  style={styles.bookCover}
-                />
-              )}
-              <div style={styles.bookInfo}>
-                <div style={styles.bookTitle}>{selectedBook.title}</div>
-                <div style={styles.bookAuthor}>{selectedBook.author}</div>
+          {manualMode ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <input
+                type="text"
+                style={styles.input}
+                value={manualBookTitle}
+                onChange={(e) => setManualBookTitle(e.target.value)}
+                placeholder="책 제목을 입력하세요"
+              />
+              <input
+                type="text"
+                style={styles.input}
+                value={manualBookAuthor}
+                onChange={(e) => setManualBookAuthor(e.target.value)}
+                placeholder="저자 (선택)"
+              />
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  type="button"
+                  style={{ fontSize: 13, color: '#667eea', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                  onClick={() => { setManualMode(false); setManualBookTitle(''); setManualBookAuthor(''); }}
+                >
+                  ← 검색으로 돌아가기
+                </button>
               </div>
             </div>
+          ) : selectedBook ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div
+                style={styles.bookSelected}
+                onClick={() => setShowBookModal(true)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => e.key === 'Enter' && setShowBookModal(true)}
+              >
+                {selectedBook.coverImageUrl && (
+                  <img
+                    src={selectedBook.coverImageUrl}
+                    alt={selectedBook.title}
+                    style={styles.bookCover}
+                  />
+                )}
+                <div style={styles.bookInfo}>
+                  <div style={styles.bookTitle}>{selectedBook.title}</div>
+                  <div style={styles.bookAuthor}>{selectedBook.author}</div>
+                </div>
+              </div>
+              <button
+                type="button"
+                style={{ fontSize: 13, color: '#718096', background: 'none', border: 'none', cursor: 'pointer', padding: 0, textAlign: 'left' }}
+                onClick={() => { setSelectedBook(null); }}
+              >
+                ✕ 책 선택 해제
+              </button>
+            </div>
           ) : (
-            <button
-              type="button"
-              style={styles.bookSelectButton}
-              onClick={() => setShowBookModal(true)}
-            >
-              📚 책을 검색하여 선택하세요
-            </button>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <button
+                type="button"
+                style={styles.bookSelectButton}
+                onClick={() => setShowBookModal(true)}
+              >
+                📚 책을 검색하여 선택하세요
+              </button>
+              <button
+                type="button"
+                style={{ fontSize: 13, color: '#667eea', background: 'none', border: 'none', cursor: 'pointer', padding: 0, textAlign: 'left' }}
+                onClick={() => setManualMode(true)}
+              >
+                🖊️ 목록에 없는 책을 직접 입력
+              </button>
+            </div>
           )}
           {errors.book && <div style={styles.errorText}>{errors.book}</div>}
         </div>
@@ -280,18 +345,32 @@ function CommunityWritePage() {
           {errors.content && <div style={styles.errorText}>{errors.content}</div>}
         </div>
 
-        {/* Page Number */}
-        <div style={styles.formGroup}>
-          <label style={styles.label}>페이지 번호 (선택)</label>
-          <input
-            type="number"
-            style={styles.input}
-            value={pageNumber}
-            onChange={(e) => setPageNumber(e.target.value)}
-            placeholder="해당 페이지 번호를 입력하세요"
-            min={1}
-          />
-        </div>
+        {/* Page Range - 책이 선택된 경우에만 표시 */}
+        {(selectedBook || manualBookTitle.trim()) && (
+          <div style={styles.formGroup}>
+            <label style={styles.label}>페이지 범위 (선택)</label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input
+                type="number"
+                style={{ ...styles.input, flex: 1 }}
+                value={pageStart}
+                onChange={(e) => setPageStart(e.target.value)}
+                placeholder="시작 페이지"
+                min={0}
+              />
+              <span style={{ color: '#718096', fontSize: 14 }}>~</span>
+              <input
+                type="number"
+                style={{ ...styles.input, flex: 1 }}
+                value={pageEnd}
+                onChange={(e) => setPageEnd(e.target.value)}
+                placeholder="끝 페이지"
+                min={0}
+              />
+            </div>
+            {errors.pageEnd && <div style={styles.errorText}>{errors.pageEnd}</div>}
+          </div>
+        )}
 
         {/* Category */}
         <div style={styles.formGroup}>

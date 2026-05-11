@@ -6,7 +6,7 @@ import { AppError } from './auth.service';
 
 export interface CommunityPostForFilter {
   id: string;
-  bookId: string;
+  bookId: string | null;
   content: string;
   [key: string]: any;
 }
@@ -91,16 +91,16 @@ export const spoilerService = {
     const readBookIdSet = new Set(readBookIds);
 
     if (mode === 'hide_completely') {
-      // 읽지 않은 책의 게시글을 제외 (읽은 책의 게시글만 반환)
+      // 읽지 않은 책의 게시글을 제외 (읽은 책의 게시글만 반환, 책 미지정 게시글은 항상 표시)
       return posts
-        .filter((post) => readBookIdSet.has(post.bookId))
+        .filter((post) => !post.bookId || readBookIdSet.has(post.bookId))
         .map((post) => ({ ...post, isSpoilerMasked: false }));
     }
 
     if (mode === 'hide_content') {
-      // 읽지 않은 책의 게시글 내용을 마스킹 처리
+      // 읽지 않은 책의 게시글 내용을 마스킹 처리 (책 미지정 게시글은 마스킹 안 함)
       return posts.map((post) => {
-        if (readBookIdSet.has(post.bookId)) {
+        if (!post.bookId || readBookIdSet.has(post.bookId)) {
           return { ...post, isSpoilerMasked: false };
         }
         return {

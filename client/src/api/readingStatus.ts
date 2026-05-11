@@ -7,6 +7,10 @@ export interface ReadingStatusListParams {
 
 export interface AddReadingStatusRequest {
   bookId: string;
+  bookTitle?: string;
+  bookAuthor?: string;
+  bookCoverImageUrl?: string;
+  bookIsbn?: string;
   status: ReadingStatusType;
 }
 

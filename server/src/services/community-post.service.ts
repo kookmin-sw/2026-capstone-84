@@ -9,9 +9,14 @@ import { communitySearchService } from './community-search.service';
 // ===== 입력 타입 =====
 
 export interface CreatePostInput {
-  bookId: string;
+  bookId?: string | null;
+  bookTitle?: string;
+  bookAuthor?: string;
+  bookCoverImageUrl?: string;
+  bookIsbn?: string;
   content: string;
-  pageNumber?: number | null;
+  pageStart?: number | null;
+  pageEnd?: number | null;
   category?: CategoryKey | null;
 }
 
@@ -27,20 +32,63 @@ export const communityPostService = {
    * - 책(필수), 내용(필수), 페이지 번호(선택), 카테고리(선택)
    */
   async createPost(authorId: string, input: CreatePostInput) {
-    const { bookId, content, pageNumber, category } = input;
+    const { bookId, bookTitle, bookAuthor, bookCoverImageUrl, bookIsbn, content, pageStart, pageEnd, category } = input;
 
     // 필수 필드 검증
-    if (!bookId || !bookId.trim()) {
-      throw new AppError(400, 'VALIDATION_ERROR', '책을 선택해주세요');
-    }
     if (!content || !content.trim()) {
       throw new AppError(400, 'VALIDATION_ERROR', '글 내용을 입력해주세요');
     }
 
-    // 책 존재 여부 확인
-    const book = await readerPrisma.book.findUnique({ where: { id: bookId } });
-    if (!book) {
-      throw new AppError(404, 'NOT_FOUND', '선택한 책을 찾을 수 없습니다');
+    // 카테고리 유효성 검증 (제공된 경우)
+    if (category && !CATEGORY_KEYS.includes(category)) {
+      throw new AppError(400, 'VALIDATION_ERROR', '유효하지 않은 카테고리입니다');
+    }
+
+    // 책 처리: 선택 사항
+    let resolvedBookId: string | null = null;
+    let book: any = null;
+
+    if (bookId) {
+      // UUID로 먼저 시도
+      book = await readerPrisma.book.findUnique({ where: { id: bookId } });
+
+      if (!book && bookIsbn) {
+        // ISBN으로 기존 책 검색
+        book = await readerPrisma.book.findFirst({ where: { isbn: bookIsbn } });
+      }
+
+      if (!book) {
+        // 책이 DB에 없으면 새로 생성
+        if (!bookTitle) {
+          throw new AppError(404, 'NOT_FOUND', '선택한 책을 찾을 수 없습니다');
+        }
+        book = await writerPrisma.book.create({
+          data: {
+            title: bookTitle,
+            author: bookAuthor || null,
+            coverImageUrl: bookCoverImageUrl || null,
+            isbn: bookIsbn || bookId,
+          },
+        });
+      }
+
+      resolvedBookId = book.id;
+    } else if (bookIsbn || bookTitle) {
+      // bookId 없이 ISBN이나 제목으로 책 정보가 온 경우
+      if (bookIsbn) {
+        book = await readerPrisma.book.findFirst({ where: { isbn: bookIsbn } });
+      }
+      if (!book && bookTitle) {
+        book = await writerPrisma.book.create({
+          data: {
+            title: bookTitle,
+            author: bookAuthor || null,
+            coverImageUrl: bookCoverImageUrl || null,
+            isbn: bookIsbn || null,
+          },
+        });
+      }
+      if (book) resolvedBookId = book.id;
     }
 
     // 카테고리 유효성 검증 (제공된 경우)
@@ -51,9 +99,10 @@ export const communityPostService = {
     const post = await writerPrisma.communityPost.create({
       data: {
         authorId,
-        bookId,
+        bookId: resolvedBookId,
         content: content.trim(),
-        pageNumber: pageNumber ?? null,
+        pageStart: pageStart ?? null,
+        pageEnd: pageEnd ?? null,
         category: category ?? null,
       },
       include: {
@@ -63,7 +112,7 @@ export const communityPostService = {
     });
 
     // AI 카테고리 자동 분류 (카테고리 미지정 시)
-    if (!category) {
+    if (!category && book) {
       try {
         const classificationResult = await aiClassifierService.classifyCategory(
           book.title,
@@ -92,9 +141,9 @@ export const communityPostService = {
       content: post.content,
       category: (post as any).category ?? null,
       authorNickname: post.author.nickname ?? '',
-      bookTitle: post.book.title,
-      bookAuthor: post.book.author ?? null,
-      bookId: post.bookId,
+      bookTitle: post.book?.title ?? '',
+      bookAuthor: post.book?.author ?? null,
+      bookId: post.bookId ?? '',
       isHidden: false,
       createdAt: post.createdAt.toISOString(),
     }).catch(console.error);
@@ -159,6 +208,42 @@ export const communityPostService = {
     }
 
     return post;
+  },
+
+  /**
+   * 게시글 수정
+   * - 작성자 본인만 수정 가능
+   */
+  async updatePost(postId: string, userId: string, input: { content?: string; pageStart?: number | null; pageEnd?: number | null; category?: CategoryKey | null }) {
+    const post = await readerPrisma.communityPost.findUnique({
+      where: { id: postId },
+      select: { id: true, authorId: true },
+    });
+
+    if (!post) {
+      throw new AppError(404, 'NOT_FOUND', '게시글을 찾을 수 없습니다');
+    }
+
+    if (post.authorId !== userId) {
+      throw new AppError(403, 'FORBIDDEN', '본인이 작성한 게시글만 수정할 수 있습니다');
+    }
+
+    const data: any = {};
+    if (input.content !== undefined) data.content = input.content.trim();
+    if (input.pageStart !== undefined) data.pageStart = input.pageStart;
+    if (input.pageEnd !== undefined) data.pageEnd = input.pageEnd;
+    if (input.category !== undefined) data.category = input.category;
+
+    const updated = await writerPrisma.communityPost.update({
+      where: { id: postId },
+      data,
+      include: {
+        author: { select: { id: true, nickname: true, profileImageUrl: true } },
+        book: { select: { id: true, title: true, author: true, coverImageUrl: true } },
+      },
+    });
+
+    return updated;
   },
 
   /**

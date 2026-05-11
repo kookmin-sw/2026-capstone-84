@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import NavigationBar from './components/layout/NavigationBar';
 import LoginPage from './pages/LoginPage';
@@ -13,6 +13,8 @@ import MyPage from './pages/MyPage';
 import SettingsPage from './pages/SettingsPage';
 import DashboardPage from './pages/DashboardPage';
 import InvitePage from './pages/InvitePage';
+import { useAuthStore } from './stores/authStore';
+import { mypageApi } from './api/mypage';
 
 // Lazy-loaded community pages
 const CommunityPage = lazy(() => import('./pages/CommunityPage'));
@@ -20,6 +22,17 @@ const CommunityWritePage = lazy(() => import('./pages/CommunityWritePage'));
 const CommunityPostPage = lazy(() => import('./pages/CommunityPostPage'));
 
 function App() {
+  const accessToken = useAuthStore((s) => s.accessToken);
+  const user = useAuthStore((s) => s.user);
+  const setUser = useAuthStore((s) => s.setUser);
+
+  // 토큰은 있는데 user 정보가 없으면 프로필 가져오기
+  useEffect(() => {
+    if (accessToken && !user) {
+      mypageApi.getProfile().then((res) => setUser(res.data)).catch(() => {});
+    }
+  }, [accessToken]);
+
   return (
     <>
       <NavigationBar />

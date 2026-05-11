@@ -160,19 +160,32 @@ export interface RecommendedTopic {
 export interface CommunityPost {
   id: string;
   authorId: string;
-  authorNickname: string;
-  bookId: string;
-  bookTitle: string;
-  bookAuthor?: string;
-  bookCoverImageUrl?: string;
+  author: {
+    id: string;
+    nickname: string;
+    profileImageUrl?: string | null;
+  };
+  bookId: string | null;
+  book?: {
+    id: string;
+    title: string;
+    author?: string | null;
+    coverImageUrl?: string | null;
+  } | null;
   content: string;
   category: string | null;
-  pageNumber?: number | null;
+  pageStart?: number | null;
+  pageEnd?: number | null;
   isHidden: boolean;
   likeCount: number;
   commentCount: number;
   createdAt: string;
   updatedAt: string;
+  // flat aliases for backward compatibility
+  authorNickname?: string;
+  bookTitle?: string;
+  bookAuthor?: string;
+  bookCoverImageUrl?: string;
 }
 
 // ===== Community Comment =====
