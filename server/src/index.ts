@@ -13,6 +13,10 @@ import dashboardRouter from './routes/dashboard.routes';
 import aiRouter from './routes/ai.routes';
 import searchRouter from './routes/search.routes';
 import healthRouter from './routes/health.routes';
+import communityRouter from './routes/community.routes';
+import notificationRouter from './routes/notification.routes';
+import adminRouter from './routes/admin.routes';
+import readingMemoRouter from './routes/reading-memo.routes';
 import { globalErrorHandler } from './middleware/errorHandler';
 import { redisService } from './services/redis.service';
 import { searchService } from './services/search.service';
@@ -51,9 +55,13 @@ app.use('/api/groups', groupRouter);
 app.use('/api', memoRouter);
 app.use('/api', discussionRouter);
 app.use('/api/me', mypageRouter);
+app.use('/api/me/reading-status', readingMemoRouter);
 app.use('/api', dashboardRouter);
 app.use('/api', aiRouter);
 app.use('/api', searchRouter);
+app.use('/api/community', communityRouter);
+app.use('/api/notifications', notificationRouter);
+app.use('/api/admin', adminRouter);
 
 // 글로벌 에러 핸들러 (모든 라우터 뒤에 등록)
 app.use(globalErrorHandler);
