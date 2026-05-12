@@ -2,16 +2,16 @@ import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { dashboardApi, type Announcement, type DiscussionSchedule } from '../api/dashboard';
 import { groupsApi } from '../api/groups';
-import { discussionsApi } from '../api/discussions';
+import { proposalsApi, type TopicProposal } from '../api/proposals';
 import { useAuthStore } from '../stores/authStore';
-import type { GroupDetail, RecommendedTopic } from '../types';
+import type { GroupDetail } from '../types';
 
 const tabs = [
   { id: 'calendar', label: '📅 토론 일정' },
   { id: 'invite', label: '🔗 초대 링크' },
   { id: 'announcements', label: '📢 공지사항' },
   { id: 'members', label: '👥 멤버 관리' },
-  { id: 'topics', label: '💡 추천 주제' },
+  { id: 'topics', label: '💬 토론 생성' },
 ] as const;
 
 type TabId = typeof tabs[number]['id'];
@@ -36,7 +36,6 @@ const styles: Record<string, React.CSSProperties> = {
   inviteBox: { backgroundColor: '#f7fafc', padding: '12px 16px', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 12 },
   calGrid: { display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2, textAlign: 'center' as const },
   calCell: { padding: '8px 4px', fontSize: 12, borderRadius: 4, minHeight: 36, display: 'flex', alignItems: 'center', justifyContent: 'center' },
-  recCard: { backgroundColor: '#f0fff4', padding: '12px 16px', borderRadius: 6, marginBottom: 8 },
 };
 
 function DashboardPage() {
@@ -50,7 +49,7 @@ function DashboardPage() {
   const [inviteExpiresAt, setInviteExpiresAt] = useState<string | null>(null);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [schedules, setSchedules] = useState<DiscussionSchedule[]>([]);
-  const [recommendations, setRecommendations] = useState<RecommendedTopic[]>([]);
+  const [proposals, setProposals] = useState<TopicProposal[]>([]);
   const [newAnnTitle, setNewAnnTitle] = useState('');
   const [newAnnContent, setNewAnnContent] = useState('');
   const [newSchedTitle, setNewSchedTitle] = useState('');
@@ -67,19 +66,19 @@ function DashboardPage() {
   const fetchAll = async () => {
     if (!groupId) return;
     try {
-      const [gRes, invRes, annRes, recRes, schedRes] = await Promise.all([
+      const [gRes, invRes, annRes, schedRes, propRes] = await Promise.all([
         groupsApi.getDetail(groupId),
         dashboardApi.getInviteCode(groupId).catch(() => ({ data: { inviteCode: null, expiresAt: null } })),
         dashboardApi.listAnnouncements(groupId).catch(() => ({ data: [] })),
-        discussionsApi.getRecommendations(groupId).catch(() => ({ data: [] })),
         dashboardApi.listSchedules(groupId).catch(() => ({ data: [] })),
+        proposalsApi.list(groupId).catch(() => ({ data: [] })),
       ]);
       setGroup(gRes.data);
       setInviteCode(invRes.data.inviteCode);
       setInviteExpiresAt(invRes.data.expiresAt || null);
       setAnnouncements(annRes.data);
-      setRecommendations(recRes.data);
       setSchedules(schedRes.data);
+      setProposals(propRes.data);
     } catch {}
   };
 
@@ -117,10 +116,14 @@ function DashboardPage() {
     await dashboardApi.deleteAnnouncement(groupId, annId); fetchAll();
   };
 
-  const handleSelectRecommendation = async (rec: RecommendedTopic) => {
-    if (!groupId) return;
-    await discussionsApi.create(groupId, { title: rec.title, content: rec.content });
-    alert('토론 스레드가 생성되었습니다'); fetchAll();
+  const handleOpenDiscussion = async (proposalId: string) => {
+    if (!confirm('이 주제로 토론을 개최하시겠습니까?')) return;
+    try {
+      await proposalsApi.openDiscussion(proposalId);
+      alert('토론이 개최되었습니다'); fetchAll();
+    } catch (err: any) {
+      alert(err.response?.data?.error?.message || '토론 개최에 실패했습니다');
+    }
   };
 
   const handleCreateSchedule = async () => {
@@ -274,16 +277,32 @@ function DashboardPage() {
       case 'topics':
         return (
           <div style={styles.section}>
-            <div style={styles.sectionTitle}>💡 AI 추천 토론 주제</div>
-            {recommendations.length === 0 ? (
-              <div style={{ color: '#a0aec0', fontSize: 13 }}>공개 메모가 2개 이상이면 추천 주제가 생성됩니다</div>
-            ) : recommendations.map((rec, i) => (
-              <div key={i} style={styles.recCard}>
-                <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>{rec.title}</div>
-                <div style={{ fontSize: 13, color: '#4a5568', marginBottom: 8 }}>{rec.content}</div>
-                <button style={{ ...styles.btn, ...styles.btnPrimary, padding: '6px 14px', fontSize: 12 }} onClick={() => handleSelectRecommendation(rec)}>이 주제로 토론 열기</button>
+            <div style={styles.sectionTitle}>💬 토론 생성</div>
+            <div style={{ fontSize: 13, color: '#718096', marginBottom: 16 }}>참여자들이 제안한 주제 중 선택하여 토론을 개최합니다.</div>
+
+            {proposals.filter(p => p.status === 'proposed').length === 0 ? (
+              <div style={{ color: '#a0aec0', fontSize: 13 }}>아직 제안된 토론 주제가 없습니다</div>
+            ) : proposals.filter(p => p.status === 'proposed').map(p => (
+              <div key={p.id} style={{ padding: '12px 16px', borderBottom: '1px solid #f0f0f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 14, fontWeight: 500, color: '#2d3748' }}>{p.title}</div>
+                  {p.content && <div style={{ fontSize: 13, color: '#4a5568', marginTop: 4 }}>{p.content.slice(0, 100)}{p.content.length > 100 ? '...' : ''}</div>}
+                  <div style={{ fontSize: 12, color: '#a0aec0', marginTop: 4 }}>{p.author.nickname} · {new Date(p.createdAt).toLocaleDateString()}</div>
+                </div>
+                <button style={{ ...styles.btn, ...styles.btnPrimary, padding: '6px 14px', fontSize: 12 }} onClick={() => handleOpenDiscussion(p.id)}>토론 개최</button>
               </div>
             ))}
+
+            {proposals.filter(p => p.status === 'opened').length > 0 && (
+              <div style={{ marginTop: 20 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, color: '#48bb78' }}>✅ 개최된 토론</div>
+                {proposals.filter(p => p.status === 'opened').map(p => (
+                  <div key={p.id} style={{ padding: '8px 0', borderBottom: '1px solid #f0f0f0', fontSize: 13, color: '#718096' }}>
+                    {p.title} — {p.author.nickname}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         );
     }

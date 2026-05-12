@@ -11,6 +11,7 @@ import MyPage from './pages/MyPage';
 import SettingsPage from './pages/SettingsPage';
 import DashboardPage from './pages/DashboardPage';
 import InvitePage from './pages/InvitePage';
+import ProposalThreadPage from './pages/ProposalThreadPage';
 
 function App() {
   return (
@@ -27,6 +28,7 @@ function App() {
       <Route path="/settings" element={<SettingsPage />} />
       <Route path="/groups/:id/dashboard" element={<DashboardPage />} />
       <Route path="/invite/:code" element={<InvitePage />} />
+      <Route path="/proposals/:id" element={<ProposalThreadPage />} />
     </Routes>
   );
 }

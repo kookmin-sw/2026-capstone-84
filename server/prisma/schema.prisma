@@ -22,13 +22,14 @@ model User {
   deletedAt       DateTime? @map("deleted_at")
   createdAt       DateTime @default(now()) @map("created_at")
 
-  groupMembers GroupMember[]
-  memos        Memo[]
-  discussions  Discussion[]
-  comments     Comment[]
-  replies      Reply[]
-  ownedGroups  Group[]      @relation("GroupOwner")
-  bans         GroupBan[]
+  groupMembers   GroupMember[]
+  memos          Memo[]
+  discussions    Discussion[]
+  comments       Comment[]
+  replies        Reply[]
+  ownedGroups    Group[]          @relation("GroupOwner")
+  bans           GroupBan[]
+  proposals      TopicProposal[]
 
   @@map("users")
 }
@@ -72,6 +73,7 @@ model Group {
   announcements Announcement[]
   bans          GroupBan[]
   schedules     DiscussionSchedule[]
+  proposals     TopicProposal[]
 
   @@map("groups")
 }
@@ -114,29 +116,51 @@ model Discussion {
   id            String   @id @default(uuid())
   groupId       String   @map("group_id")
   authorId      String   @map("author_id")
+  proposalId    String?  @map("proposal_id")
   memoId        String?  @map("memo_id")
   title         String   @db.VarChar(200)
   content       String?  @db.Text
   isRecommended Boolean  @default(false) @map("is_recommended")
   createdAt     DateTime @default(now()) @map("created_at")
 
-  group    Group     @relation(fields: [groupId], references: [id])
-  author   User      @relation(fields: [authorId], references: [id])
-  memo     Memo?     @relation(fields: [memoId], references: [id])
+  group    Group          @relation(fields: [groupId], references: [id])
+  author   User           @relation(fields: [authorId], references: [id])
+  memo     Memo?          @relation(fields: [memoId], references: [id])
+  proposal TopicProposal? @relation(fields: [proposalId], references: [id])
   comments Comment[]
 
   @@map("discussions")
 }
 
+model TopicProposal {
+  id        String   @id @default(uuid())
+  groupId   String   @map("group_id")
+  authorId  String   @map("author_id")
+  title     String   @db.VarChar(200)
+  content   String?  @db.Text
+  memoId    String?  @map("memo_id")
+  status    String   @default("proposed") @db.VarChar(20)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  group       Group       @relation(fields: [groupId], references: [id])
+  author      User        @relation(fields: [authorId], references: [id])
+  discussions Discussion[]
+  comments    Comment[]
+
+  @@map("topic_proposals")
+}
+
 model Comment {
   id           String   @id @default(uuid())
-  discussionId String   @map("discussion_id")
+  discussionId String?  @map("discussion_id")
+  proposalId   String?  @map("proposal_id")
   authorId     String   @map("author_id")
   content      String   @db.Text
   createdAt    DateTime @default(now()) @map("created_at")
 
-  discussion Discussion @relation(fields: [discussionId], references: [id])
-  author     User       @relation(fields: [authorId], references: [id])
+  discussion Discussion?    @relation(fields: [discussionId], references: [id])
+  proposal   TopicProposal? @relation(fields: [proposalId], references: [id])
+  author     User           @relation(fields: [authorId], references: [id])
   replies    Reply[]
 
   @@map("comments")

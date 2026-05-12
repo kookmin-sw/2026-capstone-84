@@ -1,6 +1,7 @@
 import { useState, useEffect, type FormEvent } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { discussionsApi } from '../api/discussions';
+import { proposalsApi, type TopicProposal } from '../api/proposals';
 import { memosApi } from '../api/memos';
 import { aiApi, type AiTopic } from '../api/ai';
 import { useAuthStore } from '../stores/authStore';
@@ -241,6 +242,7 @@ function DiscussionsPage() {
   const accessToken = useAuthStore((s) => s.accessToken);
 
   const [discussions, setDiscussions] = useState<Discussion[]>([]);
+  const [proposals, setProposals] = useState<TopicProposal[]>([]);
   const [recommendations, setRecommendations] = useState<RecommendedTopic[]>([]);
   const [aiTopics, setAiTopics] = useState<AiTopic[]>([]);
   const [aiLoading, setAiLoading] = useState(false);
@@ -272,14 +274,16 @@ function DiscussionsPage() {
     setLoading(true);
     try {
       const params = filterMine && currentUserId ? { authorId: currentUserId } : undefined;
-      const [discRes, recRes, memoRes] = await Promise.all([
+      const [discRes, recRes, memoRes, propRes] = await Promise.all([
         discussionsApi.listByGroup(groupId!, params),
         discussionsApi.getRecommendations(groupId!).catch(() => ({ data: [] as RecommendedTopic[] })),
         memosApi.listByGroup(groupId!).catch(() => ({ data: { myMemos: [] as Memo[], publicMemos: [] as Memo[] } })),
+        proposalsApi.list(groupId!).catch(() => ({ data: [] as TopicProposal[] })),
       ]);
       setDiscussions(discRes.data);
       setRecommendations(recRes.data);
       setMyMemos(memoRes.data.myMemos || []);
+      setProposals(propRes.data);
     } catch {
       setDiscussions([]);
     } finally {
@@ -313,7 +317,7 @@ function DiscussionsPage() {
 
     setSubmitting(true);
     try {
-      await discussionsApi.create(groupId!, {
+      await proposalsApi.create(groupId!, {
         title: formTitle.trim(),
         content: formContent.trim() || undefined,
         memoId: formMemoId || undefined,
@@ -402,13 +406,43 @@ function DiscussionsPage() {
         </button>
       </div>
 
-      {/* Discussion List */}
+      {/* 토론 주제 목록 (제안된 주제) */}
       <div style={styles.section}>
         <div style={styles.sectionTitle}>토론 주제 목록</div>
         {loading ? (
           <div style={styles.emptyState}>불러오는 중...</div>
+        ) : proposals.length === 0 ? (
+          <div style={styles.emptyState}>제안된 토론 주제가 없습니다</div>
+        ) : (
+          proposals.map((p) => (
+            <div
+              key={p.id}
+              style={{ ...styles.discussionItem, cursor: 'pointer' }}
+              onClick={() => navigate(`/proposals/${p.id}`)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => e.key === 'Enter' && navigate(`/proposals/${p.id}`)}
+            >
+              <div style={styles.discussionTitle}>
+                {p.title}
+                {p.status === 'opened' && <span style={{ ...styles.recommendedBadge, backgroundColor: '#c6f6d5', color: '#276749' }}>개최됨</span>}
+              </div>
+              {p.content && <div style={{ fontSize: 13, color: '#4a5568', marginTop: 2, marginBottom: 4 }}>{p.content.slice(0, 100)}{p.content.length > 100 ? '...' : ''}</div>}
+              <div style={styles.discussionMeta}>
+                {p.author.nickname} · {new Date(p.createdAt).toLocaleDateString()}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* 열린 토론 목록 */}
+      <div style={styles.section}>
+        <div style={styles.sectionTitle}>열린 토론 목록</div>
+        {loading ? (
+          <div style={styles.emptyState}>불러오는 중...</div>
         ) : discussions.length === 0 ? (
-          <div style={styles.emptyState}>토론 주제가 없습니다</div>
+          <div style={styles.emptyState}>아직 개최된 토론이 없습니다</div>
         ) : (
           discussions.map((d) => (
             <div
@@ -425,7 +459,6 @@ function DiscussionsPage() {
               </div>
               <div style={styles.discussionMeta}>
                 {d.authorNickname} · {new Date(d.createdAt).toLocaleDateString()}
-                {d.memoId && ' · 📝 메모 연결됨'}
               </div>
             </div>
           ))
