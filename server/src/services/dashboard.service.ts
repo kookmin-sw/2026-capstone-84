@@ -182,11 +182,14 @@ export const dashboardService = {
   async deleteComment(commentId: string, userId: string) {
     const comment = await prisma.comment.findUnique({
       where: { id: commentId },
-      include: { discussion: true },
+      include: { discussion: true, proposal: true },
     });
     if (!comment) throw new AppError(404, 'NOT_FOUND', '의견을 찾을 수 없습니다');
 
-    const group = await prisma.group.findUnique({ where: { id: comment.discussion.groupId } });
+    const groupId = comment.discussion?.groupId || comment.proposal?.groupId;
+    if (!groupId) throw new AppError(404, 'NOT_FOUND', '모임을 찾을 수 없습니다');
+
+    const group = await prisma.group.findUnique({ where: { id: groupId } });
     if (!group) throw new AppError(404, 'NOT_FOUND', '모임을 찾을 수 없습니다');
 
     // 작성자 본인이거나 방장만 삭제 가능
@@ -202,11 +205,14 @@ export const dashboardService = {
   async deleteReply(replyId: string, userId: string) {
     const reply = await prisma.reply.findUnique({
       where: { id: replyId },
-      include: { comment: { include: { discussion: true } } },
+      include: { comment: { include: { discussion: true, proposal: true } } },
     });
     if (!reply) throw new AppError(404, 'NOT_FOUND', '답글을 찾을 수 없습니다');
 
-    const group = await prisma.group.findUnique({ where: { id: reply.comment.discussion.groupId } });
+    const groupId = reply.comment.discussion?.groupId || reply.comment.proposal?.groupId;
+    if (!groupId) throw new AppError(404, 'NOT_FOUND', '모임을 찾을 수 없습니다');
+
+    const group = await prisma.group.findUnique({ where: { id: groupId } });
     if (!group) throw new AppError(404, 'NOT_FOUND', '모임을 찾을 수 없습니다');
 
     if (reply.authorId !== userId && group.ownerId !== userId) {

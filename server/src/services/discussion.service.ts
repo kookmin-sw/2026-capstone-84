@@ -140,8 +140,12 @@ export const discussionService = {
     }
 
     // Verify user is a member of the group
+    const groupId = comment.discussion?.groupId;
+    if (!groupId) {
+      throw new AppError(400, 'VALIDATION_ERROR', '해당 의견의 토론 정보를 찾을 수 없습니다');
+    }
     const member = await prisma.groupMember.findUnique({
-      where: { groupId_userId: { groupId: comment.discussion.groupId, userId } },
+      where: { groupId_userId: { groupId, userId } },
     });
     if (!member) {
       throw new AppError(403, 'FORBIDDEN', '모임 참여자만 댓글을 작성할 수 있습니다');
