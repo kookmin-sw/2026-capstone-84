@@ -5,7 +5,6 @@ import { aiApi } from '../api/ai';
 import { Markdown } from '../components/Markdown';
 import { useAuthStore } from '../stores/authStore';
 import ReadingStatusTabs from '../components/mypage/ReadingStatusTabs';
-import GroupActivitySection from '../components/mypage/GroupActivitySection';
 import type { GroupCard, Memo, Discussion, User } from '../types';
 
 function MyPage() {
@@ -162,8 +161,12 @@ function MyPage() {
         </div>
       )}
 
+      {/* 독서 상태 관리 */}
+      <ReadingStatusTabs excludeBookTitles={groups.map((g: any) => g.book?.title).filter(Boolean)} />
+
       {/* 내 독서 클럽 */}
-      <div>
+      <div style={{ marginTop: 20 }}>
+        <div style={{ fontSize: 16, fontWeight: 700, color: '#2d3748', marginBottom: 12 }}>💬 내 독서 클럽</div>
         {groups.length === 0 ? (
           <div style={s.emptyState}>
             <div style={{ fontSize: 40, marginBottom: 12 }}>📚</div>
@@ -286,11 +289,6 @@ function MyPage() {
         </div>
       )}
 
-      {/* 독서 상태 관리 */}
-      <ReadingStatusTabs />
-
-      {/* 독서토론 그룹 활동 */}
-      <GroupActivitySection groups={groups} />
     </div>
   );
 }

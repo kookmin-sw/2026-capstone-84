@@ -237,9 +237,28 @@ export interface ReadingStatus {
   userId: string;
   bookId: string;
   status: ReadingStatusType;
+  currentPage: number;
   book?: Book;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ReadingMemo {
+  id: string;
+  readingStatusId: string;
+  userId: string;
+  content: string;
+  pageNumber: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProgressLog {
+  id: string;
+  readingStatusId: string;
+  userId: string;
+  page: number;
+  createdAt: string;
 }
 
 // ===== API =====

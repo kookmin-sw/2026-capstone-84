@@ -10,6 +10,7 @@ export interface ReadingStatusItem {
   userId: string;
   bookId: string;
   status: ReadingStatusType;
+  currentPage: number;
   createdAt: Date;
   updatedAt: Date;
   book: {

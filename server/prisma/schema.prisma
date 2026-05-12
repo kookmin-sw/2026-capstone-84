@@ -39,6 +39,8 @@ model User {
   receivedNotifs    Notification[]     @relation("NotificationRecipient")
   actedNotifs       Notification[]     @relation("NotificationActor")
   spoilerSetting    UserSpoilerSetting? @relation("UserSpoilerSetting")
+  readingMemos      ReadingMemo[]       @relation("ReadingMemoUser")
+  readingProgressLogs ReadingProgressLog[] @relation("ReadingProgressLogUser")
 
   @@map("users")
 }
@@ -291,15 +293,51 @@ model ReadingStatus {
   userId    String   @map("user_id")
   bookId    String   @map("book_id")
   status    String   @db.VarChar(20)
+  currentPage Int    @default(0) @map("current_page")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
 
-  user User @relation("ReadingStatusUser", fields: [userId], references: [id])
-  book Book @relation("ReadingStatusBook", fields: [bookId], references: [id])
+  user  User  @relation("ReadingStatusUser", fields: [userId], references: [id])
+  book  Book  @relation("ReadingStatusBook", fields: [bookId], references: [id])
+  memos ReadingMemo[] @relation("ReadingMemoStatus")
+  progressLogs ReadingProgressLog[] @relation("ReadingProgressLogStatus")
 
   @@unique([userId, bookId])
   @@index([userId, status])
   @@map("reading_statuses")
+}
+
+// ===== 개인 독서 메모 =====
+
+model ReadingMemo {
+  id              String   @id @default(uuid())
+  readingStatusId String   @map("reading_status_id")
+  userId          String   @map("user_id")
+  content         String   @db.Text
+  pageNumber      Int?     @map("page_number")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @default(now()) @updatedAt @map("updated_at")
+
+  readingStatus ReadingStatus @relation("ReadingMemoStatus", fields: [readingStatusId], references: [id], onDelete: Cascade)
+  user          User          @relation("ReadingMemoUser", fields: [userId], references: [id])
+
+  @@index([readingStatusId, createdAt(sort: Desc)])
+  @@index([userId])
+  @@map("reading_memos")
+}
+
+model ReadingProgressLog {
+  id              String   @id @default(uuid())
+  readingStatusId String   @map("reading_status_id")
+  userId          String   @map("user_id")
+  page            Int
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  readingStatus ReadingStatus @relation("ReadingProgressLogStatus", fields: [readingStatusId], references: [id], onDelete: Cascade)
+  user          User          @relation("ReadingProgressLogUser", fields: [userId], references: [id])
+
+  @@index([readingStatusId, createdAt(sort: Desc)])
+  @@map("reading_progress_logs")
 }
 
 // ===== 알림 =====

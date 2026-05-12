@@ -1,10 +1,11 @@
 import { useState, type CSSProperties, type FormEvent } from 'react';
 import { booksApi } from '../../api/books';
-import type { BookSearchResult } from '../../types';
+import type { BookSearchResult, ReadingStatusType } from '../../types';
 
 interface BookSearchModalProps {
-  onSelect: (book: BookSearchResult) => void;
+  onSelect: (book: BookSearchResult, status: ReadingStatusType) => void;
   onClose: () => void;
+  defaultStatus?: ReadingStatusType;
 }
 
 const styles: Record<string, CSSProperties> = {
@@ -128,11 +129,12 @@ const styles: Record<string, CSSProperties> = {
   },
 };
 
-function BookSearchModal({ onSelect, onClose }: BookSearchModalProps) {
+function BookSearchModal({ onSelect, onClose, defaultStatus = 'reading' }: BookSearchModalProps) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<BookSearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
+  const [selectedStatus, setSelectedStatus] = useState<ReadingStatusType>(defaultStatus);
 
   const handleSearch = async (e: FormEvent) => {
     e.preventDefault();
@@ -153,7 +155,7 @@ function BookSearchModal({ onSelect, onClose }: BookSearchModalProps) {
   };
 
   const handleSelect = (book: BookSearchResult) => {
-    onSelect(book);
+    onSelect(book, selectedStatus);
     onClose();
   };
 
@@ -180,6 +182,19 @@ function BookSearchModal({ onSelect, onClose }: BookSearchModalProps) {
             검색
           </button>
         </form>
+
+        <div style={{ marginBottom: 12 }}>
+          <label style={{ fontSize: 13, fontWeight: 500, color: '#4a5568', marginRight: 8 }}>추가할 상태:</label>
+          <select
+            value={selectedStatus}
+            onChange={(e) => setSelectedStatus(e.target.value as ReadingStatusType)}
+            style={{ padding: '6px 10px', fontSize: 13, border: '1px solid #e2e8f0', borderRadius: 6, outline: 'none' }}
+          >
+            <option value="reading">읽는 책</option>
+            <option value="completed">읽은 책</option>
+            <option value="want_to_read">읽을 책</option>
+          </select>
+        </div>
 
         <div style={styles.resultList}>
           {loading ? (

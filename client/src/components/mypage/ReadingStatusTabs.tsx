@@ -12,9 +12,9 @@ interface TabInfo {
 }
 
 const tabs: TabInfo[] = [
-  { key: 'reading', label: '읽고 있는 책' },
+  { key: 'reading', label: '읽는 책' },
   { key: 'completed', label: '읽은 책' },
-  { key: 'want_to_read', label: '읽고 싶은 책' },
+  { key: 'want_to_read', label: '읽을 책' },
 ];
 
 const styles: Record<string, CSSProperties> = {
@@ -93,7 +93,7 @@ const styles: Record<string, CSSProperties> = {
   },
 };
 
-function ReadingStatusTabs() {
+function ReadingStatusTabs({ excludeBookTitles = [] }: { excludeBookTitles?: string[] }) {
   const [activeTab, setActiveTab] = useState<TabKey>('reading');
   const [items, setItems] = useState<ReadingStatus[]>([]);
   const [loading, setLoading] = useState(true);
@@ -115,9 +115,10 @@ function ReadingStatusTabs() {
     fetchItems();
   }, []);
 
-  const filteredItems = items.filter((item) => item.status === activeTab);
+  const allItems = items.filter((item) => !excludeBookTitles.includes(item.book?.title || ''));
+  const filteredItems = allItems.filter((item) => item.status === activeTab);
 
-  const getCount = (status: TabKey) => items.filter((item) => item.status === status).length;
+  const getCount = (status: TabKey) => allItems.filter((item) => item.status === status).length;
 
   const handleStatusChange = async (id: string, newStatus: ReadingStatusType) => {
     try {
@@ -139,7 +140,7 @@ function ReadingStatusTabs() {
     }
   };
 
-  const handleBookSelect = async (book: BookSearchResult) => {
+  const handleBookSelect = async (book: BookSearchResult, status: ReadingStatusType) => {
     try {
       const res = await readingStatusApi.addBook({
         bookId: book.isbn,
@@ -147,9 +148,10 @@ function ReadingStatusTabs() {
         bookAuthor: book.author,
         bookCoverImageUrl: book.coverImageUrl,
         bookIsbn: book.isbn,
-        status: activeTab,
+        status,
       });
       setItems((prev) => [...prev, res.data]);
+      setActiveTab(status);
     } catch {
       // 실패 시 무시 (중복 등)
     }
@@ -198,6 +200,7 @@ function ReadingStatusTabs() {
         <BookSearchModal
           onSelect={handleBookSelect}
           onClose={() => setShowModal(false)}
+          defaultStatus={activeTab}
         />
       )}
     </div>

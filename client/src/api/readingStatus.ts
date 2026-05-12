@@ -1,5 +1,5 @@
 import apiClient from './client';
-import type { ReadingStatus, ReadingStatusType } from '../types';
+import type { ReadingStatus, ReadingStatusType, ReadingMemo, ProgressLog } from '../types';
 
 export interface ReadingStatusListParams {
   status?: ReadingStatusType;
@@ -42,6 +42,30 @@ export const readingStatusApi = {
   /** 책 제거 (독서 상태 삭제) */
   removeBook: (id: string) =>
     apiClient.delete(`/me/reading-status/${id}`),
+
+  /** 현재 페이지 기록 업데이트 */
+  updatePage: (id: string, currentPage: number) =>
+    apiClient.patch(`/me/reading-status/${id}/page`, { currentPage }),
+
+  /** 진행도 이력 조회 */
+  getProgressLogs: (readingStatusId: string) =>
+    apiClient.get<ProgressLog[]>(`/me/reading-status/${readingStatusId}/progress-logs`),
+
+  /** 독서 메모 목록 조회 */
+  getMemos: (readingStatusId: string) =>
+    apiClient.get<ReadingMemo[]>(`/me/reading-status/${readingStatusId}/memos`),
+
+  /** 독서 메모 생성 */
+  createMemo: (readingStatusId: string, data: { content: string; pageNumber?: number }) =>
+    apiClient.post<ReadingMemo>(`/me/reading-status/${readingStatusId}/memos`, data),
+
+  /** 독서 메모 수정 */
+  updateMemo: (readingStatusId: string, memoId: string, data: { content: string; pageNumber?: number }) =>
+    apiClient.patch<ReadingMemo>(`/me/reading-status/${readingStatusId}/memos/${memoId}`, data),
+
+  /** 독서 메모 삭제 */
+  deleteMemo: (readingStatusId: string, memoId: string) =>
+    apiClient.delete(`/me/reading-status/${readingStatusId}/memos/${memoId}`),
 
   /** 스포일러 설정 조회 */
   getSpoilerSetting: () =>

@@ -1,4 +1,5 @@
 import type { CSSProperties } from 'react';
+import { useNavigate } from 'react-router-dom';
 import type { ReadingStatus, ReadingStatusType } from '../../types';
 
 interface ReadingBookCardProps {
@@ -8,9 +9,9 @@ interface ReadingBookCardProps {
 }
 
 const statusLabels: Record<ReadingStatusType, string> = {
-  reading: '읽고 있는 책',
+  reading: '읽는 책',
   completed: '읽은 책',
-  want_to_read: '읽고 싶은 책',
+  want_to_read: '읽을 책',
 };
 
 const styles: Record<string, CSSProperties> = {
@@ -64,7 +65,17 @@ const styles: Record<string, CSSProperties> = {
   actions: {
     display: 'flex',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
+  },
+  actionBtn: {
+    padding: '4px 10px',
+    fontSize: 11,
+    fontWeight: 600,
+    border: '1px solid #e2e8f0',
+    borderRadius: 6,
+    backgroundColor: '#fff',
+    cursor: 'pointer',
+    color: '#4a5568',
   },
   select: {
     padding: '4px 8px',
@@ -89,6 +100,8 @@ const styles: Record<string, CSSProperties> = {
 };
 
 function ReadingBookCard({ item, onStatusChange, onRemove }: ReadingBookCardProps) {
+  const navigate = useNavigate();
+
   return (
     <div style={styles.card}>
       {item.book?.coverImageUrl ? (
@@ -100,24 +113,29 @@ function ReadingBookCard({ item, onStatusChange, onRemove }: ReadingBookCardProp
         <div style={styles.title}>{item.book?.title || '제목 없음'}</div>
         <div style={styles.author}>{item.book?.author || '저자 미상'}</div>
         <div style={styles.actions}>
-          <select
-            style={styles.select}
-            value={item.status}
-            onChange={(e) => onStatusChange(item.id, e.target.value as ReadingStatusType)}
-            aria-label="독서 상태 변경"
-          >
-            {Object.entries(statusLabels).map(([value, label]) => (
-              <option key={value} value={value}>{label}</option>
-            ))}
-          </select>
-          <button
-            style={styles.removeButton}
-            onClick={() => onRemove(item.id)}
-            aria-label="책 제거"
-          >
-            삭제
+          <button style={styles.actionBtn} onClick={() => navigate(`/reading/${item.id}`)}>
+            📝 독서 기록
           </button>
         </div>
+      </div>
+      <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+        <select
+          style={styles.select}
+          value={item.status}
+          onChange={(e) => onStatusChange(item.id, e.target.value as ReadingStatusType)}
+          aria-label="독서 상태 변경"
+        >
+          {Object.entries(statusLabels).map(([value, label]) => (
+            <option key={value} value={value}>{label}</option>
+          ))}
+        </select>
+        <button
+          style={styles.removeButton}
+          onClick={() => onRemove(item.id)}
+          aria-label="책 제거"
+        >
+          삭제
+        </button>
       </div>
     </div>
   );

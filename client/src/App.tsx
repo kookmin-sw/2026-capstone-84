@@ -10,6 +10,7 @@ import MemosPage from './pages/MemosPage';
 import DiscussionsPage from './pages/DiscussionsPage';
 import DiscussionThreadPage from './pages/DiscussionThreadPage';
 import MyPage from './pages/MyPage';
+import ReadingDetailPage from './pages/ReadingDetailPage';
 import SettingsPage from './pages/SettingsPage';
 import DashboardPage from './pages/DashboardPage';
 import InvitePage from './pages/InvitePage';
@@ -29,7 +30,12 @@ function App() {
   // 토큰은 있는데 user 정보가 없으면 프로필 가져오기
   useEffect(() => {
     if (accessToken && !user) {
-      mypageApi.getProfile().then((res) => setUser(res.data)).catch(() => {});
+      mypageApi.getProfile()
+        .then((res) => setUser(res.data))
+        .catch(() => {
+          // 프로필 조회 실패 시 (토큰 만료/서버 에러) 로그아웃 처리
+          useAuthStore.getState().logout();
+        });
     }
   }, [accessToken]);
 
@@ -58,6 +64,7 @@ function App() {
 
           {/* User pages */}
           <Route path="/mypage" element={<MyPage />} />
+          <Route path="/reading/:id" element={<ReadingDetailPage />} />
           <Route path="/settings" element={<SettingsPage />} />
         </Routes>
       </Suspense>
