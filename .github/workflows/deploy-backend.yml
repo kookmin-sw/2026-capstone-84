@@ -1,0 +1,151 @@
+name: Deploy Backend
+
+# Triggers: main merge (production), develop push (development)
+# Requirements: 6.1, 6.2, 6.5, 6.7
+on:
+  push:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'server/**'
+      - 'ecosystem.config.js'
+      - 'prisma/**'
+
+# Rollback: To rollback, re-deploy a previous S3 artifact by triggering
+# an ASG instance refresh with the desired artifact version:
+#   aws s3 cp s3://$BUCKET/releases/<previous-version>/app.tar.gz s3://$BUCKET/latest/app.tar.gz
+#   aws autoscaling start-instance-refresh --auto-scaling-group-name $ASG_NAME \
+#     --preferences '{"MinHealthyPercentage": 50}'
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ github.ref_name == 'main' && 'production' || 'development' }}
+
+    env:
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+      DEPLOY_BUCKET: ${{ secrets.DEPLOY_BUCKET }}
+      ASG_NAME: ${{ secrets.ASG_NAME }}
+      ALB_DNS: ${{ secrets.ALB_DNS }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: server/package-lock.json
+
+      - name: Install server dependencies
+        run: npm ci
+        working-directory: server
+
+      - name: Build server
+        run: npm run build
+        working-directory: server
+
+      - name: Package artifact
+        run: |
+          cp ../ecosystem.config.js ./ecosystem.config.js
+          tar -czf app.tar.gz \
+            dist/ \
+            node_modules/ \
+            package.json \
+            prisma/ \
+            ecosystem.config.js
+          rm -f ./ecosystem.config.js
+        working-directory: server
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Upload artifact to S3
+        run: |
+          TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+          COMMIT_SHA="${{ github.sha }}"
+          SHORT_SHA="${COMMIT_SHA:0:7}"
+          ARTIFACT_KEY="releases/${TIMESTAMP}-${SHORT_SHA}/app.tar.gz"
+
+          aws s3 cp server/app.tar.gz "s3://${DEPLOY_BUCKET}/${ARTIFACT_KEY}"
+          aws s3 cp server/app.tar.gz "s3://${DEPLOY_BUCKET}/latest/app.tar.gz"
+
+          echo "Uploaded artifact: ${ARTIFACT_KEY}"
+
+      - name: Start ASG instance refresh
+        id: instance-refresh
+        run: |
+          REFRESH_ID=$(aws autoscaling start-instance-refresh \
+            --auto-scaling-group-name "${ASG_NAME}" \
+            --preferences '{"MinHealthyPercentage": 50, "InstanceWarmup": 300}' \
+            --query 'InstanceRefreshId' \
+            --output text)
+
+          echo "refresh_id=${REFRESH_ID}" >> "$GITHUB_OUTPUT"
+          echo "Started instance refresh: ${REFRESH_ID}"
+
+      - name: Wait for instance refresh to complete
+        run: |
+          REFRESH_ID="${{ steps.instance-refresh.outputs.refresh_id }}"
+          TIMEOUT=600
+          ELAPSED=0
+          INTERVAL=30
+
+          echo "Waiting for instance refresh ${REFRESH_ID} to complete..."
+
+          while [ $ELAPSED -lt $TIMEOUT ]; do
+            STATUS=$(aws autoscaling describe-instance-refreshes \
+              --auto-scaling-group-name "${ASG_NAME}" \
+              --instance-refresh-ids "${REFRESH_ID}" \
+              --query 'InstanceRefreshes[0].Status' \
+              --output text)
+
+            echo "Status: ${STATUS} (elapsed: ${ELAPSED}s)"
+
+            if [ "$STATUS" = "Successful" ]; then
+              echo "Instance refresh completed successfully."
+              exit 0
+            elif [ "$STATUS" = "Failed" ] || [ "$STATUS" = "Cancelled" ]; then
+              echo "Instance refresh ${STATUS}."
+              exit 1
+            fi
+
+            sleep $INTERVAL
+            ELAPSED=$((ELAPSED + INTERVAL))
+          done
+
+          echo "Timeout waiting for instance refresh to complete."
+          exit 1
+
+      - name: Health check
+        run: |
+          echo "Verifying deployment health..."
+          RETRIES=5
+          DELAY=15
+
+          for i in $(seq 1 $RETRIES); do
+            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+              "https://${ALB_DNS}/api/health" || echo "000")
+
+            if [ "$HTTP_STATUS" = "200" ]; then
+              echo "Health check passed (HTTP ${HTTP_STATUS})"
+              exit 0
+            fi
+
+            echo "Attempt ${i}/${RETRIES}: HTTP ${HTTP_STATUS}, retrying in ${DELAY}s..."
+            sleep $DELAY
+          done
+
+          echo "Health check failed after ${RETRIES} attempts."
+          exit 1

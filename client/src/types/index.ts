@@ -158,12 +158,123 @@ export interface RecommendedTopic {
   content: string;
 }
 
+// ===== Community Post =====
+export interface CommunityPost {
+  id: string;
+  authorId: string;
+  author: {
+    id: string;
+    nickname: string;
+    profileImageUrl?: string | null;
+  };
+  bookId: string | null;
+  book?: {
+    id: string;
+    title: string;
+    author?: string | null;
+    coverImageUrl?: string | null;
+  } | null;
+  content: string;
+  category: string | null;
+  pageStart?: number | null;
+  pageEnd?: number | null;
+  isHidden: boolean;
+  likeCount: number;
+  commentCount: number;
+  createdAt: string;
+  updatedAt: string;
+  // flat aliases for backward compatibility
+  authorNickname?: string;
+  bookTitle?: string;
+  bookAuthor?: string;
+  bookCoverImageUrl?: string;
+}
+
+// ===== Community Comment =====
+export interface CommunityComment {
+  id: string;
+  postId: string;
+  authorId: string;
+  authorNickname: string;
+  parentId: string | null;
+  content: string;
+  createdAt: string;
+  replies?: CommunityComment[];
+}
+
+// ===== Community Like =====
+export interface CommunityLike {
+  id: string;
+  postId: string;
+  userId: string;
+  createdAt: string;
+}
+
+// ===== Notification =====
+export type NotificationType =
+  | 'comment'
+  | 'reply'
+  | 'like'
+  | 'report_hidden'
+  | 'discussion_schedule'
+  | 'moderation_alert';
+
+export interface Notification {
+  id: string;
+  recipientId: string;
+  actorId?: string | null;
+  type: NotificationType;
+  title: string;
+  message: string;
+  linkUrl: string;
+  isRead: boolean;
+  createdAt: string;
+}
+
+// ===== Reading Status =====
+export type ReadingStatusType = 'reading' | 'completed' | 'want_to_read';
+
+export interface ReadingStatus {
+  id: string;
+  userId: string;
+  bookId: string;
+  status: ReadingStatusType;
+  currentPage: number;
+  book?: Book;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ReadingMemo {
+  id: string;
+  readingStatusId: string;
+  userId: string;
+  content: string;
+  pageNumber: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProgressLog {
+  id: string;
+  readingStatusId: string;
+  userId: string;
+  page: number;
+  createdAt: string;
+}
+
 // ===== API =====
 export interface PaginatedResult<T> {
   data: T[];
   total: number;
   page: number;
   totalPages: number;
+}
+
+export interface CursorPaginatedResult<T> {
+  data: T[];
+  nextCursor: string | null;
+  hasMore: boolean;
 }
 
 export interface ApiError {

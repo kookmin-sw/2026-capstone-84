@@ -1,0 +1,264 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Aurora MySQL 8.0 Compatible Cluster for Book Discussion Platform.
+  Creates a Writer + Reader instance with KMS encryption, automated backups,
+  Multi-AZ failover, and utf8mb4 character set configuration.
+  Requirements: 2.1, 2.2, 2.4, 2.5, 2.6
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Default: bookclub
+    Description: Environment name prefix for resource naming (must match VPC and security-groups stacks)
+
+  MasterUsername:
+    Type: String
+    Default: admin
+    Description: Master username for the Aurora cluster
+    MinLength: 1
+    MaxLength: 16
+    AllowedPattern: '[a-zA-Z][a-zA-Z0-9]*'
+    ConstraintDescription: Must begin with a letter and contain only alphanumeric characters
+
+  MasterUserPassword:
+    Type: String
+    NoEcho: true
+    Description: Master password for the Aurora cluster
+    MinLength: 8
+    MaxLength: 41
+
+  DBInstanceClass:
+    Type: String
+    Default: db.r6g.large
+    Description: Instance class for Aurora DB instances
+    AllowedValues:
+      - db.r6g.large
+      - db.r6g.xlarge
+      - db.r6g.2xlarge
+      - db.t3.medium
+
+Resources:
+  # ============================================================
+  # KMS Key for Aurora Encryption (AES-256)
+  # Requirement: 2.5 (암호화)
+  # ============================================================
+  AuroraKMSKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: KMS key for Aurora MySQL cluster encryption (AES-256)
+      EnableKeyRotation: true
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: EnableRootAccountAccess
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+            Action: 'kms:*'
+            Resource: '*'
+          - Sid: AllowRDSAccess
+            Effect: Allow
+            Principal:
+              Service: rds.amazonaws.com
+            Action:
+              - kms:Encrypt
+              - kms:Decrypt
+              - kms:ReEncrypt*
+              - kms:GenerateDataKey*
+              - kms:DescribeKey
+            Resource: '*'
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-aurora-kms-key'
+
+  AuroraKMSKeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Sub 'alias/${EnvironmentName}-aurora'
+      TargetKeyId: !Ref AuroraKMSKey
+
+  # ============================================================
+  # DB Subnet Group (Private Database Subnets)
+  # Requirement: 2.6 (프라이빗 서브넷 배치)
+  # ============================================================
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Subnet group for Aurora MySQL cluster in private database subnets
+      SubnetIds:
+        - !ImportValue
+          Fn::Sub: '${EnvironmentName}-DbPrivateSubnet1Id'
+        - !ImportValue
+          Fn::Sub: '${EnvironmentName}-DbPrivateSubnet2Id'
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-aurora-subnet-group'
+
+  # ============================================================
+  # DB Cluster Parameter Group (utf8mb4 settings)
+  # Requirement: 2.1 (MySQL 8.0 호환, utf8mb4_unicode_ci)
+  # ============================================================
+  DBClusterParameterGroup:
+    Type: AWS::RDS::DBClusterParameterGroup
+    Properties:
+      Description: Aurora MySQL 8.0 cluster parameter group with utf8mb4 settings
+      Family: aurora-mysql8.0
+      Parameters:
+        character_set_server: utf8mb4
+        character_set_client: utf8mb4
+        character_set_connection: utf8mb4
+        character_set_database: utf8mb4
+        character_set_results: utf8mb4
+        collation_server: utf8mb4_unicode_ci
+        collation_connection: utf8mb4_unicode_ci
+        time_zone: Asia/Seoul
+        slow_query_log: '1'
+        long_query_time: '1'
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-aurora-cluster-pg'
+
+  # ============================================================
+  # DB Instance Parameter Group
+  # ============================================================
+  DBInstanceParameterGroup:
+    Type: AWS::RDS::DBParameterGroup
+    Properties:
+      Description: Aurora MySQL 8.0 instance parameter group
+      Family: aurora-mysql8.0
+      Parameters:
+        max_connections: '1000'
+        innodb_lock_wait_timeout: '30'
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-aurora-instance-pg'
+
+  # ============================================================
+  # Aurora MySQL Cluster
+  # Requirements: 2.1 (MySQL 8.0), 2.4 (백업 7일), 2.5 (KMS 암호화/페일오버)
+  # ============================================================
+  AuroraCluster:
+    Type: AWS::RDS::DBCluster
+    DeletionPolicy: Snapshot
+    UpdateReplacePolicy: Snapshot
+    Properties:
+      DBClusterIdentifier: !Sub '${EnvironmentName}-aurora-cluster'
+      Engine: aurora-mysql
+      EngineVersion: '8.0.mysql_aurora.3.04.1'
+      DatabaseName: bookclub
+      MasterUsername: !Ref MasterUsername
+      MasterUserPassword: !Ref MasterUserPassword
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      DBClusterParameterGroupName: !Ref DBClusterParameterGroup
+      VpcSecurityGroupIds:
+        - !ImportValue
+          Fn::Sub: '${EnvironmentName}-AuroraSecurityGroupId'
+      StorageEncrypted: true
+      KmsKeyId: !Ref AuroraKMSKey
+      BackupRetentionPeriod: 7
+      PreferredBackupWindow: '03:00-04:00'
+      PreferredMaintenanceWindow: 'sun:04:30-sun:05:30'
+      EnableCloudwatchLogsExports:
+        - slowquery
+        - error
+      CopyTagsToSnapshot: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-aurora-cluster'
+
+  # ============================================================
+  # Writer Instance (Primary)
+  # Requirement: 2.2 (Writer 1개, db.r6g.large)
+  # ============================================================
+  AuroraWriterInstance:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBInstanceIdentifier: !Sub '${EnvironmentName}-aurora-writer'
+      DBClusterIdentifier: !Ref AuroraCluster
+      DBInstanceClass: !Ref DBInstanceClass
+      Engine: aurora-mysql
+      DBParameterGroupName: !Ref DBInstanceParameterGroup
+      PubliclyAccessible: false
+      EnablePerformanceInsights: true
+      PerformanceInsightsKMSKeyId: !Ref AuroraKMSKey
+      PerformanceInsightsRetentionPeriod: 7
+      MonitoringInterval: 60
+      MonitoringRoleArn: !GetAtt RDSMonitoringRole.Arn
+      PromotionTier: 0
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-aurora-writer'
+
+  # ============================================================
+  # Reader Instance (Replica)
+  # Requirement: 2.2 (Reader 1개, db.r6g.large), 2.5 (Multi-AZ 페일오버)
+  # ============================================================
+  AuroraReaderInstance:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBInstanceIdentifier: !Sub '${EnvironmentName}-aurora-reader'
+      DBClusterIdentifier: !Ref AuroraCluster
+      DBInstanceClass: !Ref DBInstanceClass
+      Engine: aurora-mysql
+      DBParameterGroupName: !Ref DBInstanceParameterGroup
+      PubliclyAccessible: false
+      EnablePerformanceInsights: true
+      PerformanceInsightsKMSKeyId: !Ref AuroraKMSKey
+      PerformanceInsightsRetentionPeriod: 7
+      MonitoringInterval: 60
+      MonitoringRoleArn: !GetAtt RDSMonitoringRole.Arn
+      PromotionTier: 1
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-aurora-reader'
+
+  # ============================================================
+  # IAM Role for Enhanced Monitoring
+  # ============================================================
+  RDSMonitoringRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${EnvironmentName}-rds-monitoring-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: monitoring.rds.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonRDSEnhancedMonitoringRole
+
+# ============================================================
+# Outputs (for cross-stack references)
+# ============================================================
+Outputs:
+  ClusterEndpoint:
+    Description: Aurora cluster writer endpoint (for write operations)
+    Value: !GetAtt AuroraCluster.Endpoint.Address
+    Export:
+      Name: !Sub '${EnvironmentName}-AuroraClusterEndpoint'
+
+  ReaderEndpoint:
+    Description: Aurora cluster reader endpoint (for read operations)
+    Value: !GetAtt AuroraCluster.ReadEndpoint.Address
+    Export:
+      Name: !Sub '${EnvironmentName}-AuroraReaderEndpoint'
+
+  ClusterArn:
+    Description: Aurora cluster ARN
+    Value: !Sub 'arn:aws:rds:${AWS::Region}:${AWS::AccountId}:cluster:${AuroraCluster}'
+    Export:
+      Name: !Sub '${EnvironmentName}-AuroraClusterArn'
+
+  ClusterPort:
+    Description: Aurora cluster port
+    Value: !GetAtt AuroraCluster.Endpoint.Port
+    Export:
+      Name: !Sub '${EnvironmentName}-AuroraClusterPort'
+
+  DatabaseName:
+    Description: Database name
+    Value: bookclub
+    Export:
+      Name: !Sub '${EnvironmentName}-AuroraDatabaseName'

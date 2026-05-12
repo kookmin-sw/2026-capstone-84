@@ -1,0 +1,235 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Auto Scaling Group and Launch Template for Book Discussion Platform.
+  Creates IAM role/instance profile, launch template with user data script,
+  and ASG with ELB health checks attached to ALB target group.
+  Requirements: 1.1, 1.7, 7.6
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Default: bookclub
+    Description: Environment name prefix for resource naming (must match VPC, security-groups, and ALB stacks)
+
+  InstanceType:
+    Type: String
+    Default: t3.medium
+    Description: EC2 instance type for application servers
+
+  DeployBucketName:
+    Type: String
+    Description: S3 bucket name containing deployment artifacts
+
+  AmiId:
+    Type: AWS::EC2::Image::Id
+    Description: AMI ID for EC2 instances (Amazon Linux 2023 recommended)
+
+Resources:
+  # ============================================================
+  # IAM Role for EC2 Instances
+  # Requirement: 7.6 - S3 read access and CloudWatch metric publishing
+  # ============================================================
+  EC2InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${EnvironmentName}-ec2-instance-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: !Sub '${EnvironmentName}-s3-read-policy'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:ListBucket
+                Resource:
+                  - !Sub 'arn:aws:s3:::${DeployBucketName}'
+                  - !Sub 'arn:aws:s3:::${DeployBucketName}/*'
+        - PolicyName: !Sub '${EnvironmentName}-cloudwatch-metrics-policy'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - cloudwatch:PutMetricData
+                Resource: '*'
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-ec2-instance-role'
+
+  # ============================================================
+  # IAM Instance Profile
+  # Requirement: 7.6 - Attach IAM role to EC2 instances
+  # ============================================================
+  EC2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: !Sub '${EnvironmentName}-ec2-instance-profile'
+      Roles:
+        - !Ref EC2InstanceRole
+
+  # ============================================================
+  # Launch Template
+  # Requirement: 1.7 - User data script for automated application deployment
+  # ============================================================
+  LaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateName: !Sub '${EnvironmentName}-launch-template'
+      LaunchTemplateData:
+        ImageId: !Ref AmiId
+        InstanceType: !Ref InstanceType
+        IamInstanceProfile:
+          Arn: !GetAtt EC2InstanceProfile.Arn
+        SecurityGroupIds:
+          - !ImportValue
+              Fn::Sub: '${EnvironmentName}-EC2SecurityGroupId'
+        UserData:
+          Fn::Base64: !Sub |
+            #!/bin/bash
+            set -e
+
+            # System updates and dependencies
+            yum update -y
+            yum install -y nodejs npm git
+
+            # Download application artifact from S3
+            mkdir -p /opt/app
+            aws s3 cp s3://${DeployBucketName}/latest/app.tar.gz /opt/app/
+            cd /opt/app && tar -xzf app.tar.gz
+
+            # Install dependencies and generate Prisma client
+            npm ci --production
+            npx prisma generate
+
+            # Install PM2 globally and start application
+            npm install -g pm2
+            pm2 start ecosystem.config.js
+            pm2 save
+        TagSpecifications:
+          - ResourceType: instance
+            Tags:
+              - Key: Name
+                Value: !Sub '${EnvironmentName}-app-instance'
+
+  # ============================================================
+  # Auto Scaling Group
+  # Requirement: 1.1 - Min 2, Max 8 instances with ELB health checks
+  # ============================================================
+  AutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      AutoScalingGroupName: !Sub '${EnvironmentName}-asg'
+      LaunchTemplate:
+        LaunchTemplateId: !Ref LaunchTemplate
+        Version: !GetAtt LaunchTemplate.LatestVersionNumber
+      MinSize: 2
+      MaxSize: 8
+      DesiredCapacity: 2
+      HealthCheckType: ELB
+      HealthCheckGracePeriod: 300
+      VPCZoneIdentifier:
+        - !ImportValue
+            Fn::Sub: '${EnvironmentName}-AppPrivateSubnet1Id'
+        - !ImportValue
+            Fn::Sub: '${EnvironmentName}-AppPrivateSubnet2Id'
+      TargetGroupARNs:
+        - !ImportValue
+            Fn::Sub: '${EnvironmentName}-TargetGroupArn'
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-asg-instance'
+          PropagateAtLaunch: true
+
+  # ============================================================
+  # Scale-Out Policy
+  # Requirement: 1.2 - Add instance when CPU > 70%
+  # ============================================================
+  ScaleOutPolicy:
+    Type: AWS::AutoScaling::ScalingPolicy
+    Properties:
+      AutoScalingGroupName: !Ref AutoScalingGroup
+      AdjustmentType: ChangeInCapacity
+      PolicyType: SimpleScaling
+      ScalingAdjustment: 1
+      Cooldown: 300
+
+  # ============================================================
+  # Scale-In Policy
+  # Requirement: 1.3 - Remove instance when CPU < 30% for 5 minutes
+  # ============================================================
+  ScaleInPolicy:
+    Type: AWS::AutoScaling::ScalingPolicy
+    Properties:
+      AutoScalingGroupName: !Ref AutoScalingGroup
+      AdjustmentType: ChangeInCapacity
+      PolicyType: SimpleScaling
+      ScalingAdjustment: -1
+      Cooldown: 300
+
+  # ============================================================
+  # High CPU Alarm (triggers Scale-Out)
+  # Requirement: 1.2 - CPU > 70% for 2 evaluation periods
+  # ============================================================
+  HighCPUAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${EnvironmentName}-high-cpu-alarm'
+      AlarmDescription: Scale out when average CPU exceeds 70% for 2 consecutive periods
+      Namespace: AWS/EC2
+      MetricName: CPUUtilization
+      Dimensions:
+        - Name: AutoScalingGroupName
+          Value: !Ref AutoScalingGroup
+      Statistic: Average
+      Period: 60
+      EvaluationPeriods: 2
+      Threshold: 70
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions:
+        - !Ref ScaleOutPolicy
+
+  # ============================================================
+  # Low CPU Alarm (triggers Scale-In)
+  # Requirement: 1.3 - CPU < 30% for 5 evaluation periods (5 minutes)
+  # ============================================================
+  LowCPUAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${EnvironmentName}-low-cpu-alarm'
+      AlarmDescription: Scale in when average CPU stays below 30% for 5 consecutive periods
+      Namespace: AWS/EC2
+      MetricName: CPUUtilization
+      Dimensions:
+        - Name: AutoScalingGroupName
+          Value: !Ref AutoScalingGroup
+      Statistic: Average
+      Period: 60
+      EvaluationPeriods: 5
+      Threshold: 30
+      ComparisonOperator: LessThanThreshold
+      AlarmActions:
+        - !Ref ScaleInPolicy
+
+# ============================================================
+# Outputs (for cross-stack references)
+# ============================================================
+Outputs:
+  AutoScalingGroupName:
+    Description: Name of the Auto Scaling Group
+    Value: !Ref AutoScalingGroup
+    Export:
+      Name: !Sub '${EnvironmentName}-ASGName'
+
+  LaunchTemplateId:
+    Description: ID of the Launch Template
+    Value: !Ref LaunchTemplate
+    Export:
+      Name: !Sub '${EnvironmentName}-LaunchTemplateId'

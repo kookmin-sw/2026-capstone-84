@@ -1,0 +1,111 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  ElastiCache Redis Replication Group for Book Discussion Platform.
+  Creates a Redis 7.x cluster with 1 replica (Multi-AZ), TLS encryption,
+  AUTH token authentication, and allkeys-lru eviction policy.
+  Requirements: 3.6, 3.7, 7.4
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Default: bookclub
+    Description: Environment name prefix for resource naming (must match VPC and security-groups stacks)
+
+  CacheNodeType:
+    Type: String
+    Default: cache.r6g.large
+    Description: ElastiCache node instance type
+    AllowedValues:
+      - cache.r6g.large
+      - cache.r6g.xlarge
+      - cache.r6g.2xlarge
+      - cache.t3.medium
+
+  AuthToken:
+    Type: String
+    NoEcho: true
+    Description: AUTH token for Redis authentication (minimum 16 characters)
+    MinLength: 16
+    MaxLength: 128
+    ConstraintDescription: Must be between 16 and 128 characters
+
+Resources:
+  # ============================================================
+  # ElastiCache Subnet Group (Private Cache Subnets)
+  # Requirement: 7.4 (프라이빗 서브넷 배치)
+  # ============================================================
+  RedisSubnetGroup:
+    Type: AWS::ElastiCache::SubnetGroup
+    Properties:
+      CacheSubnetGroupName: !Sub '${EnvironmentName}-redis-subnet-group'
+      Description: Subnet group for ElastiCache Redis in private cache subnets
+      SubnetIds:
+        - !ImportValue
+          Fn::Sub: '${EnvironmentName}-CachePrivateSubnet1Id'
+        - !ImportValue
+          Fn::Sub: '${EnvironmentName}-CachePrivateSubnet2Id'
+
+  # ============================================================
+  # ElastiCache Parameter Group (allkeys-lru eviction policy)
+  # Requirement: 3.6 (allkeys-lru 최대 메모리 정책)
+  # ============================================================
+  RedisParameterGroup:
+    Type: AWS::ElastiCache::ParameterGroup
+    Properties:
+      CacheParameterGroupFamily: redis7
+      Description: Redis 7.x parameter group with allkeys-lru eviction policy
+      Properties:
+        maxmemory-policy: allkeys-lru
+
+  # ============================================================
+  # ElastiCache Replication Group (Redis 7.x, Multi-AZ)
+  # Requirements: 3.6 (Redis 구성), 3.7 (TLS/AUTH), 7.4 (보안 그룹)
+  # ============================================================
+  RedisReplicationGroup:
+    Type: AWS::ElastiCache::ReplicationGroup
+    Properties:
+      ReplicationGroupId: !Sub '${EnvironmentName}-redis'
+      ReplicationGroupDescription: Redis cluster for session management and caching
+      Engine: redis
+      EngineVersion: '7.1'
+      CacheNodeType: !Ref CacheNodeType
+      NumCacheClusters: 2
+      AutomaticFailoverEnabled: true
+      MultiAZEnabled: true
+      CacheSubnetGroupName: !Ref RedisSubnetGroup
+      CacheParameterGroupName: !Ref RedisParameterGroup
+      SecurityGroupIds:
+        - !ImportValue
+          Fn::Sub: '${EnvironmentName}-RedisSecurityGroupId'
+      TransitEncryptionEnabled: true
+      AuthToken: !Ref AuthToken
+      AtRestEncryptionEnabled: true
+      SnapshotRetentionLimit: 1
+      SnapshotWindow: '03:00-04:00'
+      PreferredMaintenanceWindow: 'sun:04:30-sun:05:30'
+      Port: 6379
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-redis'
+
+# ============================================================
+# Outputs (for cross-stack references)
+# ============================================================
+Outputs:
+  RedisPrimaryEndpoint:
+    Description: Redis primary endpoint for write operations
+    Value: !GetAtt RedisReplicationGroup.PrimaryEndPoint.Address
+    Export:
+      Name: !Sub '${EnvironmentName}-RedisPrimaryEndpoint'
+
+  RedisReaderEndpoint:
+    Description: Redis reader endpoint for read operations
+    Value: !GetAtt RedisReplicationGroup.ReaderEndPoint.Address
+    Export:
+      Name: !Sub '${EnvironmentName}-RedisReaderEndpoint'
+
+  RedisPort:
+    Description: Redis port
+    Value: !GetAtt RedisReplicationGroup.PrimaryEndPoint.Port
+    Export:
+      Name: !Sub '${EnvironmentName}-RedisPort'

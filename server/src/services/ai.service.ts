@@ -1,8 +1,6 @@
 import axios from 'axios';
-import { PrismaClient } from '@prisma/client';
+import { readerPrisma } from '../lib/prisma';
 import { AppError } from './auth.service';
-
-const prisma = new PrismaClient();
 
 const getApiKey = () => process.env.GEMINI_API_KEY || '';
 const getModel = () => process.env.GEMINI_MODEL || 'gemini-2.5-flash';
@@ -30,7 +28,7 @@ async function callGemini(systemPrompt: string, userPrompt: string): Promise<str
 
 export const aiService = {
   async suggestTopics(groupId: string): Promise<{ topics: { title: string; content: string }[] }> {
-    const group = await prisma.group.findUnique({
+    const group = await readerPrisma.group.findUnique({
       where: { id: groupId },
       include: {
         book: true,
@@ -71,7 +69,7 @@ ${memoSummary}
   },
 
   async summarizeThread(discussionId: string): Promise<{ summary: string }> {
-    const discussion = await prisma.discussion.findUnique({
+    const discussion = await readerPrisma.discussion.findUnique({
       where: { id: discussionId },
       include: {
         author: { select: { nickname: true } },
@@ -119,7 +117,7 @@ ${thread.join('\n')}
   },
 
   async generateInsight(groupId: string, userId: string): Promise<{ insight: string }> {
-    const group = await prisma.group.findUnique({
+    const group = await readerPrisma.group.findUnique({
       where: { id: groupId },
       include: {
         book: true,
@@ -128,13 +126,13 @@ ${thread.join('\n')}
     });
     if (!group) throw new AppError(404, 'NOT_FOUND', '모임을 찾을 수 없습니다');
 
-    const myMemos = await prisma.memo.findMany({
+    const myMemos = await readerPrisma.memo.findMany({
       where: { groupId, userId },
       orderBy: { pageStart: 'asc' },
       select: { content: true, pageStart: true, pageEnd: true },
     });
 
-    const discussions = await prisma.discussion.findMany({
+    const discussions = await readerPrisma.discussion.findMany({
       where: { groupId },
       include: {
         comments: {

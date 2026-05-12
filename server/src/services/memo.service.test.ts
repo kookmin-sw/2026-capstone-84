@@ -11,10 +11,14 @@ const mockPrisma = vi.hoisted(() => ({
   groupMember: {
     findUnique: vi.fn(),
   },
+  group: {
+    findUnique: vi.fn(),
+  },
 }));
 
-vi.mock('@prisma/client', () => ({
-  PrismaClient: vi.fn(() => mockPrisma),
+vi.mock('../lib/prisma', () => ({
+  writerPrisma: mockPrisma,
+  readerPrisma: mockPrisma,
 }));
 
 import { memoService } from './memo.service';
@@ -23,6 +27,11 @@ import { AppError } from './auth.service';
 describe('MemoService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Default mock for group lookup used in search indexing (fire-and-forget)
+    mockPrisma.group.findUnique.mockResolvedValue({
+      id: 'group-1',
+      book: { title: 'Test Book' },
+    });
   });
 
   describe('create', () => {
@@ -31,7 +40,7 @@ describe('MemoService', () => {
         id: 'member-1',
         groupId: 'group-1',
         userId: 'user-1',
-        readingProgress: 0,
+        readingProgress: 100,
       });
       mockPrisma.memo.create.mockResolvedValue({
         id: 'memo-1',
@@ -63,6 +72,7 @@ describe('MemoService', () => {
           pageEnd: 50,
           content: '좋은 내용이다',
           isPublic: false,
+          visibility: 'private',
         },
         include: { user: { select: { id: true, nickname: true } } },
       });
@@ -166,16 +176,26 @@ describe('MemoService', () => {
       mockPrisma.memo.findUnique.mockResolvedValue({
         id: 'memo-1',
         userId: 'user-1',
+        groupId: 'group-1',
         isPublic: false,
+        visibility: 'private',
+        pageEnd: 50,
+      });
+      mockPrisma.groupMember.findUnique.mockResolvedValue({
+        id: 'member-1',
+        groupId: 'group-1',
+        userId: 'user-1',
+        readingProgress: 100,
       });
       mockPrisma.memo.update.mockResolvedValue({
         id: 'memo-1',
         userId: 'user-1',
         isPublic: true,
+        visibility: 'public',
         user: { id: 'user-1', nickname: 'tester' },
       });
 
-      const memo = await memoService.updateVisibility('memo-1', 'user-1', true);
+      const memo = await memoService.updateVisibility('memo-1', 'user-1', 'public');
       expect(memo.isPublic).toBe(true);
     });
 
@@ -186,7 +206,7 @@ describe('MemoService', () => {
       });
 
       try {
-        await memoService.updateVisibility('memo-1', 'user-1', true);
+        await memoService.updateVisibility('memo-1', 'user-1', 'public');
         expect.fail('Should have thrown');
       } catch (err) {
         expect(err).toBeInstanceOf(AppError);
@@ -212,6 +232,7 @@ describe('MemoService', () => {
           pageEnd: 50,
           content: '내 비공개 메모',
           isPublic: false,
+          visibility: 'private',
           createdAt: new Date(),
           updatedAt: new Date(),
           user: { id: 'user-1', nickname: 'me' },
@@ -224,6 +245,7 @@ describe('MemoService', () => {
           pageEnd: 30,
           content: '타인 공개 메모',
           isPublic: true,
+          visibility: 'public',
           createdAt: new Date(),
           updatedAt: new Date(),
           user: { id: 'user-2', nickname: 'other' },
@@ -257,7 +279,8 @@ describe('MemoService', () => {
           pageStart: 30,
           pageEnd: 50,
           content: '스포일러 포함 메모',
-          isPublic: true,
+          isPublic: false,
+          visibility: 'spoiler',
           createdAt: new Date(),
           updatedAt: new Date(),
           user: { id: 'user-2', nickname: 'other' },

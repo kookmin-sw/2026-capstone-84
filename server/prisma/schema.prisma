@@ -30,6 +30,18 @@ model User {
   ownedGroups  Group[]      @relation("GroupOwner")
   bans         GroupBan[]
 
+  // 커뮤니티 관계
+  communityPosts    CommunityPost[]    @relation("CommunityPostAuthor")
+  communityComments CommunityComment[] @relation("CommunityCommentAuthor")
+  communityLikes    CommunityLike[]    @relation("CommunityLikeUser")
+  communityReports  CommunityReport[]  @relation("CommunityReportUser")
+  readingStatuses   ReadingStatus[]    @relation("ReadingStatusUser")
+  receivedNotifs    Notification[]     @relation("NotificationRecipient")
+  actedNotifs       Notification[]     @relation("NotificationActor")
+  spoilerSetting    UserSpoilerSetting? @relation("UserSpoilerSetting")
+  readingMemos      ReadingMemo[]       @relation("ReadingMemoUser")
+  readingProgressLogs ReadingProgressLog[] @relation("ReadingProgressLogUser")
+
   @@map("users")
 }
 
@@ -43,6 +55,10 @@ model Book {
   createdAt     DateTime @default(now()) @map("created_at")
 
   groups Group[]
+
+  // 커뮤니티 관계
+  communityPosts  CommunityPost[]  @relation("CommunityPostBook")
+  readingStatuses ReadingStatus[]  @relation("ReadingStatusBook")
 
   @@map("books")
 }
@@ -194,4 +210,168 @@ model DiscussionSchedule {
   group Group @relation(fields: [groupId], references: [id])
 
   @@map("discussion_schedules")
+}
+
+// ===== 커뮤니티 게시판 =====
+
+model CommunityPost {
+  id           String   @id @default(uuid())
+  authorId     String   @map("author_id")
+  bookId       String?  @map("book_id")
+  content      String   @db.Text
+  category     String?  @db.VarChar(50)
+  pageStart    Int?     @map("page_start")
+  pageEnd      Int?     @map("page_end")
+  isHidden     Boolean  @default(false) @map("is_hidden")
+  likeCount    Int      @default(0) @map("like_count")
+  commentCount Int      @default(0) @map("comment_count")
+  reportCount  Int      @default(0) @map("report_count")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at")
+
+  author   User              @relation("CommunityPostAuthor", fields: [authorId], references: [id])
+  book     Book?             @relation("CommunityPostBook", fields: [bookId], references: [id])
+  comments CommunityComment[]
+  likes    CommunityLike[]
+  reports  CommunityReport[]
+
+  @@index([category, createdAt(sort: Desc)])
+  @@index([authorId])
+  @@index([bookId])
+  @@index([createdAt(sort: Desc)])
+  @@index([isHidden, category, createdAt(sort: Desc)])
+  @@map("community_posts")
+}
+
+model CommunityComment {
+  id        String   @id @default(uuid())
+  postId    String   @map("post_id")
+  authorId  String   @map("author_id")
+  parentId  String?  @map("parent_id")
+  content   String   @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+
+  post    CommunityPost      @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author  User               @relation("CommunityCommentAuthor", fields: [authorId], references: [id])
+  parent  CommunityComment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies CommunityComment[] @relation("CommentReplies")
+
+  @@index([postId, createdAt])
+  @@index([parentId])
+  @@map("community_comments")
+}
+
+model CommunityLike {
+  id        String   @id @default(uuid())
+  postId    String   @map("post_id")
+  userId    String   @map("user_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  post CommunityPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user User          @relation("CommunityLikeUser", fields: [userId], references: [id])
+
+  @@unique([postId, userId])
+  @@map("community_likes")
+}
+
+model CommunityReport {
+  id        String   @id @default(uuid())
+  postId    String   @map("post_id")
+  userId    String   @map("user_id")
+  reason    String   @db.VarChar(100)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  post CommunityPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user User          @relation("CommunityReportUser", fields: [userId], references: [id])
+
+  @@unique([postId, userId])
+  @@map("community_reports")
+}
+
+// ===== 독서 상태 =====
+
+model ReadingStatus {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  bookId    String   @map("book_id")
+  status    String   @db.VarChar(20)
+  currentPage Int    @default(0) @map("current_page")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+
+  user  User  @relation("ReadingStatusUser", fields: [userId], references: [id])
+  book  Book  @relation("ReadingStatusBook", fields: [bookId], references: [id])
+  memos ReadingMemo[] @relation("ReadingMemoStatus")
+  progressLogs ReadingProgressLog[] @relation("ReadingProgressLogStatus")
+
+  @@unique([userId, bookId])
+  @@index([userId, status])
+  @@map("reading_statuses")
+}
+
+// ===== 개인 독서 메모 =====
+
+model ReadingMemo {
+  id              String   @id @default(uuid())
+  readingStatusId String   @map("reading_status_id")
+  userId          String   @map("user_id")
+  content         String   @db.Text
+  pageNumber      Int?     @map("page_number")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @default(now()) @updatedAt @map("updated_at")
+
+  readingStatus ReadingStatus @relation("ReadingMemoStatus", fields: [readingStatusId], references: [id], onDelete: Cascade)
+  user          User          @relation("ReadingMemoUser", fields: [userId], references: [id])
+
+  @@index([readingStatusId, createdAt(sort: Desc)])
+  @@index([userId])
+  @@map("reading_memos")
+}
+
+model ReadingProgressLog {
+  id              String   @id @default(uuid())
+  readingStatusId String   @map("reading_status_id")
+  userId          String   @map("user_id")
+  page            Int
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  readingStatus ReadingStatus @relation("ReadingProgressLogStatus", fields: [readingStatusId], references: [id], onDelete: Cascade)
+  user          User          @relation("ReadingProgressLogUser", fields: [userId], references: [id])
+
+  @@index([readingStatusId, createdAt(sort: Desc)])
+  @@map("reading_progress_logs")
+}
+
+// ===== 알림 =====
+
+model Notification {
+  id          String   @id @default(uuid())
+  recipientId String   @map("recipient_id")
+  actorId     String?  @map("actor_id")
+  type        String   @db.VarChar(30)
+  title       String   @db.VarChar(200)
+  message     String   @db.VarChar(500)
+  linkUrl     String   @map("link_url") @db.VarChar(500)
+  isRead      Boolean  @default(false) @map("is_read")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  recipient User  @relation("NotificationRecipient", fields: [recipientId], references: [id])
+  actor     User? @relation("NotificationActor", fields: [actorId], references: [id])
+
+  @@index([recipientId, isRead, createdAt(sort: Desc)])
+  @@index([recipientId, createdAt(sort: Desc)])
+  @@map("notifications")
+}
+
+// ===== 스포일러 필터 설정 =====
+
+model UserSpoilerSetting {
+  id        String   @id @default(uuid())
+  userId    String   @unique @map("user_id")
+  mode      String   @default("off") @db.VarChar(20)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+
+  user User @relation("UserSpoilerSetting", fields: [userId], references: [id])
+
+  @@map("user_spoiler_settings")
 }

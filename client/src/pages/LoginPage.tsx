@@ -1,6 +1,7 @@
 import { useState, useEffect, type FormEvent } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { authApi } from '../api/auth';
+import { mypageApi } from '../api/mypage';
 import { useAuthStore } from '../stores/authStore';
 import type { ApiError } from '../types';
 import { AxiosError } from 'axios';
@@ -118,6 +119,7 @@ function LoginPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const setTokens = useAuthStore((s) => s.setTokens);
+  const setUser = useAuthStore((s) => s.setUser);
   const redirectPath = searchParams.get('redirect') || '/';
   const [email, setEmail] = useState('');
 
@@ -129,6 +131,8 @@ function LoginPage() {
 
     if (accessToken && refreshToken) {
       setTokens(accessToken, refreshToken);
+      // 카카오 로그인 후 프로필 가져오기
+      mypageApi.getProfile().then((res) => setUser(res.data)).catch(() => {});
       navigate(redirectPath);
     } else if (error) {
       setServerError('카카오 로그인에 실패했습니다. 다시 시도해주세요.');
@@ -151,6 +155,13 @@ function LoginPage() {
     try {
       const { data } = await authApi.login({ email, password });
       setTokens(data.accessToken, data.refreshToken);
+      // 로그인 후 사용자 프로필 가져오기
+      try {
+        const profileRes = await mypageApi.getProfile();
+        setUser(profileRes.data);
+      } catch {
+        // 프로필 조회 실패해도 로그인은 유지
+      }
       navigate(redirectPath);
     } catch (err) {
       const axiosErr = err as AxiosError<ApiError>;

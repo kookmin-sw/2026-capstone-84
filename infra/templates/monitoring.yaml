@@ -1,0 +1,681 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  CloudWatch Monitoring, Alarms, and Logging for Book Discussion Platform.
+  Creates CloudWatch dashboard (ASG/ALB/Aurora/Redis/OpenSearch metrics), SNS alarm notifications,
+  ALB access log S3 bucket, and Aurora slow query log export to CloudWatch Logs.
+  Requirements: 8.1, 8.2, 8.3, 8.4, 8.6, 8.7
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Default: bookclub
+    Description: Environment name prefix for resource naming (must match other stacks)
+
+  AlarmEmail:
+    Type: String
+    Description: Email address to receive CloudWatch alarm notifications via SNS
+
+  ASGName:
+    Type: String
+    Description: Name of the Auto Scaling Group to monitor
+
+  ALBArn:
+    Type: String
+    Description: Full ARN of the Application Load Balancer
+
+  AuroraClusterName:
+    Type: String
+    Description: Name of the Aurora DB cluster to monitor
+
+  RedisClusterId:
+    Type: String
+    Description: Replication Group ID of the ElastiCache Redis cluster to monitor
+
+  OpenSearchDomainName:
+    Type: String
+    Description: Name of the OpenSearch Service domain to monitor
+
+Resources:
+  # ============================================================
+  # SNS Topic for Alarm Notifications
+  # Requirement: 8.2 - SNS notification when alarms trigger
+  # ============================================================
+  AlarmNotificationTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub '${EnvironmentName}-alarm-notifications'
+      DisplayName: !Sub '${EnvironmentName} Infrastructure Alarms'
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-alarm-notifications'
+
+  AlarmEmailSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref AlarmNotificationTopic
+      Protocol: email
+      Endpoint: !Ref AlarmEmail
+
+  # ============================================================
+  # CloudWatch Dashboard
+  # Requirement: 8.1 - ASG CPU/memory/network, ALB requests/errors, Aurora connections/latency
+  # ============================================================
+  MonitoringDashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: !Sub '${EnvironmentName}-infrastructure'
+      DashboardBody: !Sub |
+        {
+          "widgets": [
+            {
+              "type": "text",
+              "x": 0,
+              "y": 0,
+              "width": 24,
+              "height": 1,
+              "properties": {
+                "markdown": "# ASG Metrics"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 1,
+              "width": 8,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  ["AWS/EC2", "CPUUtilization", "AutoScalingGroupName", "${ASGName}", {"stat": "Average"}]
+                ],
+                "title": "ASG CPU Utilization (%)",
+                "region": "${AWS::Region}",
+                "period": 300,
+                "view": "timeSeries"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 8,
+              "y": 1,
+              "width": 8,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  ["AWS/EC2", "NetworkIn", "AutoScalingGroupName", "${ASGName}", {"stat": "Average"}],
+                  ["AWS/EC2", "NetworkOut", "AutoScalingGroupName", "${ASGName}", {"stat": "Average"}]
+                ],
+                "title": "ASG Network In/Out (bytes)",
+                "region": "${AWS::Region}",
+                "period": 300,
+                "view": "timeSeries"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 16,
+              "y": 1,
+              "width": 8,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  ["AWS/AutoScaling", "GroupInServiceInstances", "AutoScalingGroupName", "${ASGName}", {"stat": "Average"}],
+                  ["AWS/AutoScaling", "GroupDesiredCapacity", "AutoScalingGroupName", "${ASGName}", {"stat": "Average"}]
+                ],
+                "title": "ASG Instance Count",
+                "region": "${AWS::Region}",
+                "period": 300,
+                "view": "timeSeries"
+              }
+            },
+            {
+              "type": "text",
+              "x": 0,
+              "y": 7,
+              "width": 24,
+              "height": 1,
+              "properties": {
+                "markdown": "# ALB Metrics"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 8,
+              "width": 8,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  ["AWS/ApplicationELB", "RequestCount", "LoadBalancer", "${ALBArn}", {"stat": "Sum"}]
+                ],
+                "title": "ALB Request Count",
+                "region": "${AWS::Region}",
+                "period": 300,
+                "view": "timeSeries"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 8,
+              "y": 8,
+              "width": 8,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  ["AWS/ApplicationELB", "HTTPCode_ELB_5XX_Count", "LoadBalancer", "${ALBArn}", {"stat": "Sum"}],
+                  ["AWS/ApplicationELB", "HTTPCode_Target_5XX_Count", "LoadBalancer", "${ALBArn}", {"stat": "Sum"}]
+                ],
+                "title": "ALB 5xx Error Count",
+                "region": "${AWS::Region}",
+                "period": 300,
+                "view": "timeSeries"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 16,
+              "y": 8,
+              "width": 8,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  ["AWS/ApplicationELB", "TargetResponseTime", "LoadBalancer", "${ALBArn}", {"stat": "Average"}]
+                ],
+                "title": "ALB Target Response Time (s)",
+                "region": "${AWS::Region}",
+                "period": 300,
+                "view": "timeSeries"
+              }
+            },
+            {
+              "type": "text",
+              "x": 0,
+              "y": 14,
+              "width": 24,
+              "height": 1,
+              "properties": {
+                "markdown": "# Aurora Metrics"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 15,
+              "width": 8,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  ["AWS/RDS", "DatabaseConnections", "DBClusterIdentifier", "${AuroraClusterName}", {"stat": "Average"}]
+                ],
+                "title": "Aurora Database Connections",
+                "region": "${AWS::Region}",
+                "period": 300,
+                "view": "timeSeries"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 8,
+              "y": 15,
+              "width": 8,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  ["AWS/RDS", "ReadLatency", "DBClusterIdentifier", "${AuroraClusterName}", {"stat": "Average"}],
+                  ["AWS/RDS", "WriteLatency", "DBClusterIdentifier", "${AuroraClusterName}", {"stat": "Average"}]
+                ],
+                "title": "Aurora Read/Write Latency (s)",
+                "region": "${AWS::Region}",
+                "period": 300,
+                "view": "timeSeries"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 16,
+              "y": 15,
+              "width": 8,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  ["AWS/RDS", "CPUUtilization", "DBClusterIdentifier", "${AuroraClusterName}", {"stat": "Average"}]
+                ],
+                "title": "Aurora CPU Utilization (%)",
+                "region": "${AWS::Region}",
+                "period": 300,
+                "view": "timeSeries"
+              }
+            },
+            {
+              "type": "text",
+              "x": 0,
+              "y": 21,
+              "width": 24,
+              "height": 1,
+              "properties": {
+                "markdown": "# Redis Metrics"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 22,
+              "width": 8,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  ["AWS/ElastiCache", "CacheHits", "ReplicationGroupId", "${RedisClusterId}", {"stat": "Sum"}],
+                  ["AWS/ElastiCache", "CacheMisses", "ReplicationGroupId", "${RedisClusterId}", {"stat": "Sum"}]
+                ],
+                "title": "Redis Cache Hit/Miss",
+                "region": "${AWS::Region}",
+                "period": 300,
+                "view": "timeSeries"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 8,
+              "y": 22,
+              "width": 8,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  ["AWS/ElastiCache", "BytesUsedForCache", "ReplicationGroupId", "${RedisClusterId}", {"stat": "Average"}]
+                ],
+                "title": "Redis Memory Usage (bytes)",
+                "region": "${AWS::Region}",
+                "period": 300,
+                "view": "timeSeries"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 16,
+              "y": 22,
+              "width": 8,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  ["AWS/ElastiCache", "CurrConnections", "ReplicationGroupId", "${RedisClusterId}", {"stat": "Average"}],
+                  ["AWS/ElastiCache", "Evictions", "ReplicationGroupId", "${RedisClusterId}", {"stat": "Sum"}]
+                ],
+                "title": "Redis Connections & Evictions",
+                "region": "${AWS::Region}",
+                "period": 300,
+                "view": "timeSeries"
+              }
+            },
+            {
+              "type": "text",
+              "x": 0,
+              "y": 28,
+              "width": 24,
+              "height": 1,
+              "properties": {
+                "markdown": "# OpenSearch Metrics"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 29,
+              "width": 8,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  ["AWS/ES", "IndexingLatency", "DomainName", "${OpenSearchDomainName}", "ClientId", "${AWS::AccountId}", {"stat": "Average"}]
+                ],
+                "title": "OpenSearch Indexing Latency (ms)",
+                "region": "${AWS::Region}",
+                "period": 300,
+                "view": "timeSeries"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 8,
+              "y": 29,
+              "width": 8,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  ["AWS/ES", "SearchLatency", "DomainName", "${OpenSearchDomainName}", "ClientId", "${AWS::AccountId}", {"stat": "Average"}]
+                ],
+                "title": "OpenSearch Search Latency (ms)",
+                "region": "${AWS::Region}",
+                "period": 300,
+                "view": "timeSeries"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 16,
+              "y": 29,
+              "width": 8,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  ["AWS/ES", "ClusterStatus.green", "DomainName", "${OpenSearchDomainName}", "ClientId", "${AWS::AccountId}", {"stat": "Maximum"}],
+                  ["AWS/ES", "ClusterStatus.yellow", "DomainName", "${OpenSearchDomainName}", "ClientId", "${AWS::AccountId}", {"stat": "Maximum"}],
+                  ["AWS/ES", "ClusterStatus.red", "DomainName", "${OpenSearchDomainName}", "ClientId", "${AWS::AccountId}", {"stat": "Maximum"}]
+                ],
+                "title": "OpenSearch Cluster Status",
+                "region": "${AWS::Region}",
+                "period": 300,
+                "view": "timeSeries"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 35,
+              "width": 8,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  ["AWS/ES", "FreeStorageSpace", "DomainName", "${OpenSearchDomainName}", "ClientId", "${AWS::AccountId}", {"stat": "Minimum"}]
+                ],
+                "title": "OpenSearch Free Storage Space (MB)",
+                "region": "${AWS::Region}",
+                "period": 300,
+                "view": "timeSeries"
+              }
+            }
+          ]
+        }
+
+  # ============================================================
+  # CloudWatch Alarm: ASG CPU > 80%
+  # Requirement: 8.2 - CPU > 80% for 2 consecutive 5-min periods → SNS
+  # ============================================================
+  ASGHighCPUAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${EnvironmentName}-asg-high-cpu'
+      AlarmDescription: ASG average CPU utilization exceeds 80% for 2 consecutive 5-minute periods
+      Namespace: AWS/EC2
+      MetricName: CPUUtilization
+      Dimensions:
+        - Name: AutoScalingGroupName
+          Value: !Ref ASGName
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 80
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions:
+        - !Ref AlarmNotificationTopic
+      OKActions:
+        - !Ref AlarmNotificationTopic
+      TreatMissingData: breaching
+
+  # ============================================================
+  # CloudWatch Alarm: ALB 5xx Error Rate > 5%
+  # Requirement: 8.2 - Error rate > 5% for 2 consecutive 5-min periods → SNS
+  # ============================================================
+  ALBHighErrorRateAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${EnvironmentName}-alb-high-error-rate'
+      AlarmDescription: ALB 5xx error rate exceeds 5% for 2 consecutive 5-minute periods
+      Metrics:
+        - Id: e1
+          Expression: '(m1 / m2) * 100'
+          Label: 'Error Rate (%)'
+        - Id: m1
+          MetricStat:
+            Metric:
+              Namespace: AWS/ApplicationELB
+              MetricName: HTTPCode_ELB_5XX_Count
+              Dimensions:
+                - Name: LoadBalancer
+                  Value: !Ref ALBArn
+            Period: 300
+            Stat: Sum
+          ReturnData: false
+        - Id: m2
+          MetricStat:
+            Metric:
+              Namespace: AWS/ApplicationELB
+              MetricName: RequestCount
+              Dimensions:
+                - Name: LoadBalancer
+                  Value: !Ref ALBArn
+            Period: 300
+            Stat: Sum
+          ReturnData: false
+      EvaluationPeriods: 2
+      Threshold: 5
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions:
+        - !Ref AlarmNotificationTopic
+      OKActions:
+        - !Ref AlarmNotificationTopic
+      TreatMissingData: notBreaching
+
+  # ============================================================
+  # CloudWatch Alarm: Aurora CPU > 80%
+  # Requirement: 8.2 - Aurora CPU > 80% → SNS notification
+  # ============================================================
+  AuroraHighCPUAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${EnvironmentName}-aurora-high-cpu'
+      AlarmDescription: Aurora cluster CPU utilization exceeds 80% for 2 consecutive 5-minute periods
+      Namespace: AWS/RDS
+      MetricName: CPUUtilization
+      Dimensions:
+        - Name: DBClusterIdentifier
+          Value: !Ref AuroraClusterName
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 80
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions:
+        - !Ref AlarmNotificationTopic
+      OKActions:
+        - !Ref AlarmNotificationTopic
+      TreatMissingData: breaching
+
+  # ============================================================
+  # CloudWatch Alarm: Redis Memory Usage > 80%
+  # Requirement: 8.6 - Redis memory usage monitoring → SNS
+  # ============================================================
+  RedisHighMemoryAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${EnvironmentName}-redis-high-memory'
+      AlarmDescription: Redis memory usage exceeds 80% of available memory for 2 consecutive 5-minute periods
+      Namespace: AWS/ElastiCache
+      MetricName: DatabaseMemoryUsagePercentage
+      Dimensions:
+        - Name: ReplicationGroupId
+          Value: !Ref RedisClusterId
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 80
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions:
+        - !Ref AlarmNotificationTopic
+      OKActions:
+        - !Ref AlarmNotificationTopic
+      TreatMissingData: breaching
+
+  # ============================================================
+  # CloudWatch Alarm: Redis Evictions > 0
+  # Requirement: 8.6 - Redis evictions warning → SNS
+  # ============================================================
+  RedisEvictionsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${EnvironmentName}-redis-evictions'
+      AlarmDescription: Redis is evicting keys, indicating memory pressure (warning)
+      Namespace: AWS/ElastiCache
+      MetricName: Evictions
+      Dimensions:
+        - Name: ReplicationGroupId
+          Value: !Ref RedisClusterId
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions:
+        - !Ref AlarmNotificationTopic
+      OKActions:
+        - !Ref AlarmNotificationTopic
+      TreatMissingData: notBreaching
+
+  # ============================================================
+  # CloudWatch Alarm: OpenSearch Cluster Status RED
+  # Requirement: 8.7 - OpenSearch cluster health monitoring → SNS
+  # ============================================================
+  OpenSearchRedStatusAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${EnvironmentName}-opensearch-red-status'
+      AlarmDescription: OpenSearch cluster status is RED - at least one primary shard is not allocated
+      Namespace: AWS/ES
+      MetricName: 'ClusterStatus.red'
+      Dimensions:
+        - Name: DomainName
+          Value: !Ref OpenSearchDomainName
+        - Name: ClientId
+          Value: !Ref 'AWS::AccountId'
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      AlarmActions:
+        - !Ref AlarmNotificationTopic
+      OKActions:
+        - !Ref AlarmNotificationTopic
+      TreatMissingData: breaching
+
+  # ============================================================
+  # CloudWatch Alarm: OpenSearch Free Storage < 20%
+  # Requirement: 8.7 - OpenSearch storage monitoring → SNS
+  # ============================================================
+  OpenSearchLowStorageAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${EnvironmentName}-opensearch-low-storage'
+      AlarmDescription: OpenSearch free storage space is below 20% of total storage
+      Namespace: AWS/ES
+      MetricName: FreeStorageSpace
+      Dimensions:
+        - Name: DomainName
+          Value: !Ref OpenSearchDomainName
+        - Name: ClientId
+          Value: !Ref 'AWS::AccountId'
+      Statistic: Minimum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 20000
+      ComparisonOperator: LessThanThreshold
+      AlarmActions:
+        - !Ref AlarmNotificationTopic
+      OKActions:
+        - !Ref AlarmNotificationTopic
+      TreatMissingData: breaching
+
+  # ============================================================
+  # S3 Bucket for ALB Access Logs
+  # Requirement: 8.3 - ALB access logs stored in S3
+  # ============================================================
+  ALBAccessLogBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${EnvironmentName}-alb-access-logs-${AWS::AccountId}'
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireLogsAfter30Days
+            Status: Enabled
+            ExpirationInDays: 30
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-alb-access-logs'
+
+  ALBAccessLogBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref ALBAccessLogBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowALBLogDelivery
+            Effect: Allow
+            Principal:
+              Service: logdelivery.elasticloadbalancing.amazonaws.com
+            Action: s3:PutObject
+            Resource: !Sub '${ALBAccessLogBucket.Arn}/AWSLogs/${AWS::AccountId}/*'
+          - Sid: AllowALBLogDeliveryAclCheck
+            Effect: Allow
+            Principal:
+              Service: logdelivery.elasticloadbalancing.amazonaws.com
+            Action: s3:GetBucketAcl
+            Resource: !GetAtt ALBAccessLogBucket.Arn
+
+  # ============================================================
+  # CloudWatch Log Group for Aurora Slow Query Logs
+  # Requirement: 8.4 - Aurora slow query logs exported to CloudWatch Logs
+  # ============================================================
+  AuroraSlowQueryLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/rds/cluster/${AuroraClusterName}/slowquery'
+      RetentionInDays: 30
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-aurora-slowquery-logs'
+
+  AuroraErrorLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/rds/cluster/${AuroraClusterName}/error'
+      RetentionInDays: 30
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-aurora-error-logs'
+
+# ============================================================
+# Outputs (for cross-stack references)
+# ============================================================
+Outputs:
+  AlarmNotificationTopicArn:
+    Description: ARN of the SNS topic for alarm notifications
+    Value: !Ref AlarmNotificationTopic
+    Export:
+      Name: !Sub '${EnvironmentName}-AlarmTopicArn'
+
+  DashboardName:
+    Description: Name of the CloudWatch monitoring dashboard
+    Value: !Ref MonitoringDashboard
+    Export:
+      Name: !Sub '${EnvironmentName}-DashboardName'
+
+  ALBAccessLogBucketName:
+    Description: S3 bucket name for ALB access logs
+    Value: !Ref ALBAccessLogBucket
+    Export:
+      Name: !Sub '${EnvironmentName}-ALBAccessLogBucket'
+
+  ALBAccessLogBucketArn:
+    Description: ARN of the S3 bucket for ALB access logs
+    Value: !GetAtt ALBAccessLogBucket.Arn
+    Export:
+      Name: !Sub '${EnvironmentName}-ALBAccessLogBucketArn'
+
+  AuroraSlowQueryLogGroupName:
+    Description: CloudWatch Log Group for Aurora slow query logs
+    Value: !Ref AuroraSlowQueryLogGroup
+    Export:
+      Name: !Sub '${EnvironmentName}-AuroraSlowQueryLogGroup'

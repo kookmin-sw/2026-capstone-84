@@ -1,8 +1,8 @@
 import { Prisma, PrismaClient } from '@prisma/client';
+import { writerPrisma, readerPrisma } from '../lib/prisma';
 import { AppError } from './auth.service';
 import { CreateGroupInput, UpdateGroupInput } from '../validators';
-
-const prisma = new PrismaClient();
+import { redisService } from './redis.service';
 
 type TransactionClient = Omit<PrismaClient, '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'>;
 
@@ -12,7 +12,7 @@ export const groupService = {
     let bookId = data.bookId;
 
     if (!bookId) {
-      const book = await prisma.book.create({
+      const book = await writerPrisma.book.create({
         data: {
           title: data.bookTitle,
           author: data.bookAuthor ?? null,
@@ -22,9 +22,9 @@ export const groupService = {
       });
       bookId = book.id;
     } else {
-      const existing = await prisma.book.findUnique({ where: { id: bookId } });
+      const existing = await readerPrisma.book.findUnique({ where: { id: bookId } });
       if (!existing) {
-        const book = await prisma.book.create({
+        const book = await writerPrisma.book.create({
           data: {
             title: data.bookTitle,
             author: data.bookAuthor ?? null,
@@ -37,7 +37,7 @@ export const groupService = {
     }
 
     // Create group and owner membership in a transaction
-    const group = await prisma.$transaction(async (tx: TransactionClient) => {
+    const group = await writerPrisma.$transaction(async (tx: TransactionClient) => {
       const created = await tx.group.create({
         data: {
           bookId,
@@ -82,7 +82,7 @@ export const groupService = {
     }
 
     const [groups, total] = await Promise.all([
-      prisma.group.findMany({
+      readerPrisma.group.findMany({
         where,
         skip,
         take: limit,
@@ -93,7 +93,7 @@ export const groupService = {
           members: userId ? { where: { userId }, select: { userId: true } } : false,
         },
       }),
-      prisma.group.count({ where }),
+      readerPrisma.group.count({ where }),
     ]);
 
     const items = groups.map((g: typeof groups[number]) => ({
@@ -128,7 +128,14 @@ export const groupService = {
   },
 
   async getDetail(groupId: string, userId: string) {
-    const group = await prisma.group.findUnique({
+    // 캐시에서 조회 시도
+    const cacheId = `${groupId}:user:${userId}`;
+    const cached = await redisService.getCache<any>('group', cacheId);
+    if (cached) {
+      return cached;
+    }
+
+    const group = await readerPrisma.group.findUnique({
       where: { id: groupId },
       include: {
         book: true,
@@ -155,7 +162,7 @@ export const groupService = {
 
     if (isMember) {
       [recentMemos, recentDiscussions, announcements] = await Promise.all([
-        prisma.memo.findMany({
+        readerPrisma.memo.findMany({
           where: {
             groupId,
             OR: [
@@ -169,7 +176,7 @@ export const groupService = {
             user: { select: { id: true, nickname: true } },
           },
         }),
-        prisma.discussion.findMany({
+        readerPrisma.discussion.findMany({
           where: { groupId },
           orderBy: { createdAt: 'desc' },
           take: 5,
@@ -177,7 +184,7 @@ export const groupService = {
             author: { select: { id: true, nickname: true } },
           },
         }),
-        prisma.announcement.findMany({
+        readerPrisma.announcement.findMany({
           where: { groupId },
           orderBy: { createdAt: 'desc' },
           take: 3,
@@ -185,7 +192,7 @@ export const groupService = {
       ]);
     }
 
-    return {
+    const result = {
       id: group.id,
       name: group.name,
       description: group.description,
@@ -237,10 +244,16 @@ export const groupService = {
         createdAt: a.createdAt,
       })),
     };
+
+    // 결과를 캐시에 저장 (TTL 300초)
+    await redisService.setCache('group', cacheId, result);
+
+    return result;
   },
 
-  async join(groupId: string, userId: string, password?: string, inviteToken?: string) {
-    const group = await prisma.group.findUnique({
+async join(groupId: string, userId: string, password?: string, inviteToken?: string) {
+  const group = await readerPrisma.group.findUnique({
+
       where: { id: groupId },
       include: { _count: { select: { members: true } } },
     });
@@ -263,7 +276,7 @@ export const groupService = {
     }
 
     // 차단 여부 확인
-    const banned = await prisma.groupBan.findUnique({
+    const banned = await readerPrisma.groupBan.findUnique({
       where: { groupId_userId: { groupId, userId } },
     });
     if (banned) {
@@ -271,7 +284,7 @@ export const groupService = {
     }
 
     // Check duplicate membership
-    const existingMember = await prisma.groupMember.findUnique({
+    const existingMember = await readerPrisma.groupMember.findUnique({
       where: { groupId_userId: { groupId, userId } },
     });
 
@@ -284,17 +297,38 @@ export const groupService = {
       throw new AppError(409, 'GROUP_FULL', '모집 인원이 마감되었습니다');
     }
 
-    await prisma.groupMember.create({
+    await writerPrisma.groupMember.create({
       data: {
         groupId,
         userId,
         role: 'member',
       },
     });
+
+    // 독서 상태 자동 추가: 그룹의 책을 "reading" 상태로 추가 (중복 시 무시)
+    try {
+      await writerPrisma.readingStatus.upsert({
+        where: {
+          userId_bookId: { userId, bookId: group.bookId },
+        },
+        update: {},  // 이미 존재하면 아무것도 변경하지 않음
+        create: {
+          userId,
+          bookId: group.bookId,
+          status: 'reading',
+        },
+      });
+    } catch (error) {
+      // 비차단: 독서 상태 추가 실패 시에도 그룹 참여는 성공
+      console.error('[GroupService] 독서 상태 자동 추가 실패:', error);
+    }
+
+    // 캐시 무효화: 그룹 정보 캐시 삭제 (멤버 변경)
+    await redisService.invalidateCache(`group:${groupId}:*`);
   },
 
   async update(groupId: string, userId: string, data: UpdateGroupInput) {
-    const group = await prisma.group.findUnique({ where: { id: groupId } });
+    const group = await readerPrisma.group.findUnique({ where: { id: groupId } });
     if (!group) {
       throw new AppError(404, 'NOT_FOUND', '모임을 찾을 수 없습니다');
     }
@@ -320,28 +354,38 @@ export const groupService = {
       updateData.password = data.password;
     }
 
-    return prisma.group.update({
+    const updated = await writerPrisma.group.update({
       where: { id: groupId },
       data: updateData,
       include: { book: true },
     });
+
+    // 캐시 무효화: 그룹 정보 캐시 삭제
+    await redisService.invalidateCache(`group:${groupId}:*`);
+
+    return updated;
   },
 
   async updateProgress(groupId: string, userId: string, readingProgress: number) {
-    const member = await prisma.groupMember.findUnique({
+    const member = await readerPrisma.groupMember.findUnique({
       where: { groupId_userId: { groupId, userId } },
     });
     if (!member) {
       throw new AppError(403, 'FORBIDDEN', '모임 참여자만 진행률을 업데이트할 수 있습니다');
     }
-    return prisma.groupMember.update({
+    const updated = await writerPrisma.groupMember.update({
       where: { groupId_userId: { groupId, userId } },
       data: { readingProgress },
     });
+
+    // 캐시 무효화: 그룹 정보 캐시 삭제 (멤버 진행률 변경)
+    await redisService.invalidateCache(`group:${groupId}:*`);
+
+    return updated;
   },
 
   async delete(groupId: string, userId: string) {
-    const group = await prisma.group.findUnique({
+    const group = await readerPrisma.group.findUnique({
       where: { id: groupId },
       include: { _count: { select: { members: true } } },
     });
@@ -357,7 +401,7 @@ export const groupService = {
     }
 
     // 연관 데이터 삭제 (순서 중요: FK 의존성)
-    await prisma.$transaction(async (tx: TransactionClient) => {
+    await writerPrisma.$transaction(async (tx: TransactionClient) => {
       await tx.reply.deleteMany({ where: { comment: { discussion: { groupId } } } });
       await tx.comment.deleteMany({ where: { discussion: { groupId } } });
       await tx.discussion.deleteMany({ where: { groupId } });
@@ -365,10 +409,14 @@ export const groupService = {
       await tx.groupMember.deleteMany({ where: { groupId } });
       await tx.group.delete({ where: { id: groupId } });
     });
+
+    // 캐시 무효화: 그룹 정보 및 토론 목록 캐시 삭제
+    await redisService.invalidateCache(`group:${groupId}:*`);
+    await redisService.invalidateCache(`discussions:${groupId}:*`);
   },
 
   async leave(groupId: string, userId: string) {
-    const member = await prisma.groupMember.findUnique({
+    const member = await readerPrisma.groupMember.findUnique({
       where: { groupId_userId: { groupId, userId } },
     });
     if (!member) {
@@ -377,8 +425,11 @@ export const groupService = {
     if (member.role === 'owner') {
       throw new AppError(403, 'FORBIDDEN', '방장은 모임을 나갈 수 없습니다. 모임 삭제를 이용해주세요.');
     }
-    await prisma.groupMember.delete({
+    await writerPrisma.groupMember.delete({
       where: { groupId_userId: { groupId, userId } },
     });
+
+    // 캐시 무효화: 그룹 정보 캐시 삭제 (멤버 변경)
+    await redisService.invalidateCache(`group:${groupId}:*`);
   },
 };

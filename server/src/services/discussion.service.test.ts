@@ -21,10 +21,14 @@ const mockPrisma = vi.hoisted(() => ({
   groupMember: {
     findUnique: vi.fn(),
   },
+  group: {
+    findUnique: vi.fn(),
+  },
 }));
 
-vi.mock('@prisma/client', () => ({
-  PrismaClient: vi.fn(() => mockPrisma),
+vi.mock('../lib/prisma', () => ({
+  writerPrisma: mockPrisma,
+  readerPrisma: mockPrisma,
 }));
 
 import { discussionService } from './discussion.service';
@@ -33,6 +37,11 @@ import { AppError } from './auth.service';
 describe('DiscussionService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Default mock for group lookup used in search indexing (fire-and-forget)
+    mockPrisma.group.findUnique.mockResolvedValue({
+      id: 'group-1',
+      book: { title: 'Test Book' },
+    });
   });
 
   describe('createTopic', () => {

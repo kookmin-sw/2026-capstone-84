@@ -13,42 +13,33 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '24px 16px',
     fontFamily: "'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
   },
-  header: {
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: 700,
+    marginBottom: 16,
+    color: '#1a202c',
+    letterSpacing: '-0.3px',
+  },
+  section: {
+    marginBottom: 32,
+  },
+  previewGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+    gap: 16,
+  },
+  placeholderCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 20,
+    border: '1px solid #f0f0f5',
+    boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
     display: 'flex',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 24,
-  },
-  title: {
-    fontSize: 26,
-    fontWeight: 800,
-    letterSpacing: '-0.5px',
-  },
-  nav: {
-    display: 'flex',
-    gap: 10,
-  },
-  navLink: {
-    padding: '9px 20px',
-    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-    color: '#fff',
-    borderRadius: 8,
+    justifyContent: 'center',
+    minHeight: 120,
+    color: '#a0aec0',
     fontSize: 14,
-    fontWeight: 600,
-    textDecoration: 'none',
-    boxShadow: '0 2px 8px rgba(102,126,234,0.3)',
-    transition: 'transform 0.15s, box-shadow 0.15s',
-  },
-  navLinkSecondary: {
-    padding: '9px 20px',
-    backgroundColor: '#f7f8fc',
-    color: '#4a5568',
-    borderRadius: 8,
-    fontSize: 14,
-    fontWeight: 600,
-    textDecoration: 'none',
-    border: '1px solid #e2e8f0',
-    transition: 'background-color 0.15s',
   },
   searchBar: {
     display: 'flex',
@@ -146,7 +137,6 @@ function HomePage() {
   const navigate = useNavigate();
   const accessToken = useAuthStore((s) => s.accessToken);
   const user = useAuthStore((s) => s.user);
-  const isLoggedIn = !!accessToken;
 
   // 현재 사용자 ID 추출
   let currentUserId = user?.id || '';
@@ -156,7 +146,7 @@ function HomePage() {
       currentUserId = payload.userId || '';
     } catch { /* ignore */ }
   }
-  // 초기값을 반드시 빈 배열 []로 설정하여 map 에러 방지
+
   const [groups, setGroups] = useState<GroupCard[]>([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
@@ -172,7 +162,6 @@ function HomePage() {
     try {
       const params = query ? { search: query } : undefined;
       const response = await groupsApi.list(params);
-      // API 응답 구조에 따라 데이터가 없을 경우 빈 배열을 기본값으로 사용
       setGroups(response.data?.data || []);
     } catch (error) {
       console.error("Failed to fetch groups:", error);
@@ -193,7 +182,6 @@ function HomePage() {
   };
 
   const handleCardClick = (group: GroupCard) => {
-    // 이미 참여 중이거나 본인이 생성한 모임이면 바로 상세 페이지로 이동
     if (group.isMember || group.ownerId === currentUserId) {
       navigate(`/groups/${group.id}`);
       return;
@@ -220,7 +208,6 @@ function HomePage() {
     try {
       await groupsApi.join(selectedGroup.id, password);
       setJoinMsg('모임에 참여했습니다!');
-      // 참여 성공 시 잠시 후 상세 페이지로 이동
       setTimeout(() => {
         setSelectedGroup(null);
         navigate(`/groups/${selectedGroup.id}`);
@@ -250,52 +237,53 @@ function HomePage() {
 
   return (
     <div style={styles.container}>
-      <div style={styles.header}>
-        <Link to="/" style={{ textDecoration: 'none', color: 'inherit' }} onClick={() => { setSearch(''); setSearched(false); fetchGroups(); }}>
-          <h1 style={styles.title}>📚 독서 토론</h1>
-        </Link>
-        <div style={styles.nav}>
-          {isLoggedIn ? (
-            <Link to="/mypage" style={styles.navLinkSecondary}>마이페이지</Link>
-          ) : (
-            <Link to="/login" style={styles.navLink}>로그인</Link>
-          )}
-        </div>
-      </div>
-
       {/* Hero Banner */}
       <div style={{
         background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
         borderRadius: 12,
         padding: '32px 28px',
-        marginBottom: 24,
+        marginBottom: 28,
         color: '#fff',
         position: 'relative' as const,
         overflow: 'hidden',
       }}>
         <div style={{ position: 'relative', zIndex: 1 }}>
           <div style={{ fontSize: 22, fontWeight: 700, marginBottom: 8 }}>
-            함께 읽고, 함께 나누는 독서 토론
+            함께 읽고, 함께 나누는 책 커뮤니티
           </div>
           <div style={{ fontSize: 14, opacity: 0.9, lineHeight: 1.6, maxWidth: 480 }}>
             책을 읽으며 메모를 남기고, 다른 독서가들과 생각을 나눠보세요.
             기록이 토론으로 이어지는 새로운 독서 경험을 시작하세요.
           </div>
-          <Link to="/groups/new" style={{
-            display: 'inline-block',
-            marginTop: 16,
-            padding: '10px 24px',
-            backgroundColor: 'rgba(255,255,255,0.2)',
-            color: '#fff',
-            borderRadius: 6,
-            fontSize: 14,
-            fontWeight: 600,
-            textDecoration: 'none',
-            backdropFilter: 'blur(4px)',
-            border: '1px solid rgba(255,255,255,0.3)',
-          }}>
-            모임 시작하기 →
-          </Link>
+          <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+            <Link to="/community" style={{
+              display: 'inline-block',
+              padding: '10px 24px',
+              backgroundColor: 'rgba(255,255,255,0.2)',
+              color: '#fff',
+              borderRadius: 6,
+              fontSize: 14,
+              fontWeight: 600,
+              textDecoration: 'none',
+              backdropFilter: 'blur(4px)',
+              border: '1px solid rgba(255,255,255,0.3)',
+            }}>
+              커뮤니티 둘러보기 →
+            </Link>
+            <Link to="/groups/new" style={{
+              display: 'inline-block',
+              padding: '10px 24px',
+              backgroundColor: 'rgba(255,255,255,0.1)',
+              color: '#fff',
+              borderRadius: 6,
+              fontSize: 14,
+              fontWeight: 600,
+              textDecoration: 'none',
+              border: '1px solid rgba(255,255,255,0.2)',
+            }}>
+              토론 모임 시작하기
+            </Link>
+          </div>
         </div>
         <div style={{
           position: 'absolute' as const,
@@ -309,60 +297,92 @@ function HomePage() {
         </div>
       </div>
 
-      <form onSubmit={handleSearch} style={styles.searchBar}>
-        <input
-          type="text"
-          style={styles.searchInput}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="책 제목으로 검색..."
-        />
-        <button type="submit" style={styles.searchButton}>검색</button>
-      </form>
-
-      {loading ? (
-        <div style={styles.loading}>불러오는 중...</div>
-      ) : !groups || groups.length === 0 ? (
-        <div style={styles.emptyState}>
-          {searched ? '검색 결과가 없습니다' : '아직 모임이 없습니다. 첫 모임을 만들어보세요!'}
+      {/* 인기 게시글 미리보기 섹션 */}
+      <section style={styles.section}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+          <h2 style={styles.sectionTitle}>🔥 인기 게시글</h2>
+          <Link to="/community" style={{ fontSize: 13, color: '#667eea', fontWeight: 600, textDecoration: 'none' }}>
+            더보기 →
+          </Link>
         </div>
-      ) : (
-        <div style={styles.grid}>
-          {/* 옵셔널 체이닝 ?. 을 추가하여 안전하게 렌더링 */}
-          {groups?.map((g) => (
-            <div
-              key={g.id}
-              style={styles.card}
-              onClick={() => handleCardClick(g)}
-              role="button"
-              tabIndex={0}
-              onKeyDown={(e) => e.key === 'Enter' && handleCardClick(g)}
-            >
-              <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
-                {g.book?.coverImageUrl && (
-                  <img
-                    src={g.book.coverImageUrl}
-                    alt={g.book.title}
-                    style={{ width: 80, minHeight: 110, objectFit: 'contain', borderRadius: 4, flexShrink: 0 }}
-                  />
-                )}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={styles.bookTitle}>{g.book?.title || '제목 없음'}</div>
-                  <div style={styles.groupName}>{g.name}</div>
-                  {g.book?.summary && <div style={styles.summary}>{g.book.summary}</div>}
-                  {g.description && <div style={{ ...styles.summary, marginBottom: 8 }}>{g.description}</div>}
-                  <div style={styles.meta}>
-                    📅 독서 기간: {formatDate(g.readingStartDate)} ~ {formatDate(g.readingEndDate)}<br />
-                    💬 토론 날짜: {formatDate(g.discussionDate)}<br />
-                    <span style={styles.members}>👥 {g.currentMembers}/{g.maxMembers}명</span>
-                    {(g as any).isPrivate && <span style={{ display: 'inline-block', background: '#fefcbf', color: '#975a16', padding: '3px 10px', borderRadius: 12, fontSize: 12, fontWeight: 600, marginLeft: 6 }}>🔒 비공개</span>}
+        <div style={styles.previewGrid}>
+          {/* Placeholder cards - actual data will be connected later */}
+          <div style={styles.placeholderCard}>인기 게시글이 여기에 표시됩니다</div>
+          <div style={styles.placeholderCard}>인기 게시글이 여기에 표시됩니다</div>
+          <div style={styles.placeholderCard}>인기 게시글이 여기에 표시됩니다</div>
+        </div>
+      </section>
+
+      {/* 인기 책 미리보기 섹션 */}
+      <section style={styles.section}>
+        <h2 style={styles.sectionTitle}>📚 인기 책</h2>
+        <div style={styles.previewGrid}>
+          {/* Placeholder cards - actual data will be connected later */}
+          <div style={styles.placeholderCard}>인기 책이 여기에 표시됩니다</div>
+          <div style={styles.placeholderCard}>인기 책이 여기에 표시됩니다</div>
+          <div style={styles.placeholderCard}>인기 책이 여기에 표시됩니다</div>
+        </div>
+</section>
+
+{/* 독서 토론 모임 섹션 (기존 기능 유지) */}
+<section style={styles.section}>
+  <h2 style={styles.sectionTitle}>💬 독서 토론 모임</h2>
+
+  <form onSubmit={handleSearch} style={styles.searchBar}>
+    <input
+      type="text"
+      style={styles.searchInput}
+      value={search}
+      onChange={(e) => setSearch(e.target.value)}
+      placeholder="책 제목으로 검색..."
+    />
+    <button type="submit" style={styles.searchButton}>검색</button>
+  </form>
+
+  {loading ? (
+    <div style={styles.loading}>불러오는 중...</div>
+  ) : !groups || groups.length === 0 ? (
+    <div style={styles.emptyState}>
+      {searched ? '검색 결과가 없습니다' : '아직 모임이 없습니다. 첫 모임을 만들어보세요!'}
+    </div>
+  ) : (
+    <div style={styles.grid}>
+      {groups?.map((g) => (
+        <div
+          key={g.id}
+          style={styles.card}
+          onClick={() => handleCardClick(g)}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => e.key === 'Enter' && handleCardClick(g)}
+        >
+          <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
+            {g.book?.coverImageUrl && (
+              <img
+                src={g.book.coverImageUrl}
+                alt={g.book.title}
+                style={{ width: 80, minHeight: 110, objectFit: 'contain', borderRadius: 4, flexShrink: 0 }}
+              />
+            )}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={styles.bookTitle}>{g.book?.title || '제목 없음'}</div>
+              <div style={styles.groupName}>{g.name}</div>
+              {g.book?.summary && <div style={styles.summary}>{g.book.summary}</div>}
+              {g.description && <div style={{ ...styles.summary, marginBottom: 8 }}>{g.description}</div>}
+              <div style={styles.meta}>
+                📅 독서 기간: {formatDate(g.readingStartDate)} ~ {formatDate(g.readingEndDate)}<br />
+                💬 토론 날짜: {formatDate(g.discussionDate)}<br />
+                <span style={styles.members}>👥 {g.currentMembers}/{g.maxMembers}명</span>
+                {(g as any).isPrivate && <span style={{ display: 'inline-block', background: '#fefcbf', color: '#975a16', padding: '3px 10px', borderRadius: 12, fontSize: 12, fontWeight: 600, marginLeft: 6 }}>🔒 비공개</span>}
+              </div>
+
                   </div>
                 </div>
               </div>
-            </div>
-          ))}
-        </div>
-      )}
+            ))}
+          </div>
+        )}
+      </section>
 
       {/* Group Join Modal */}
       {selectedGroup && (

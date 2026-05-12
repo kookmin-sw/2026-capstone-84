@@ -10,8 +10,9 @@ const mockPrisma = vi.hoisted(() => ({
   },
 }));
 
-vi.mock('@prisma/client', () => ({
-  PrismaClient: vi.fn(() => mockPrisma),
+vi.mock('../lib/prisma', () => ({
+  writerPrisma: mockPrisma,
+  readerPrisma: mockPrisma,
 }));
 
 import { authService, AppError } from './auth.service';
