@@ -1,76 +1,65 @@
-# Welcome to GitHub
+# Chat Rooms - 실시간 채팅방 애플리케이션
 
-캡스톤 팀 생성을 축하합니다.
+주제별 대화방을 만들고, 실시간으로 메시지를 주고받을 수 있는 웹 채팅 애플리케이션입니다.
 
-## 팀소개 및 페이지를 꾸며주세요.
+## 사전 요구사항
 
-- 프로젝트 소개
-  - 프로젝트 설치방법 및 데모, 사용방법, 프리뷰등을 readme.md에 작성.
-  - Api나 사용방법등 내용이 많을경우 wiki에 꾸미고 링크 추가.
+- Node.js (v18 이상)
+- npm
+- Git
 
-- 팀페이지 꾸미기
-  - 프로젝트 소개 및 팀원 소개
-  - index.md 예시보고 수정.
+## 다운로드
 
-- GitHub Pages 리파지토리 Settings > Options > GitHub Pages 
-  - Source를 marster branch
-  - Theme Chooser에서 태마선택
-  - 수정후 팀페이지 확인하여 점검.
+```bash
+# 프로젝트 클론
+git clone <repository-url>
 
-**팀페이지 주소** -> https://kookmin-sw.github.io/ '{{자신의 리파지토리 아이디}}'
-
-**예시)** 2023년 0조  https://kookmin-sw.github.io/capstone-2023-00/
-
-
-## 내용에 아래와 같은 내용들을 추가하세요.
-
-### 1. 프로잭트 소개
-
-프로젝트
-
-### 2. 소개 영상
-
-프로젝트 소개하는 영상을 추가하세요
-
-### 3. 팀 소개
-
-팀을 소개하세요.
-
-팀원정보 및 담당이나 사진 및 SNS를 이용하여 소개하세요.
-
-### 4. 사용법
-
-소스코드제출시 설치법이나 사용법을 작성하세요.
-
-### 5. 기타
-
-추가적인 내용은 자유롭게 작성하세요.
-
-
-## Markdown을 사용하여 내용꾸미기
-
-Markdown은 작문을 스타일링하기위한 가볍고 사용하기 쉬운 구문입니다. 여기에는 다음을위한 규칙이 포함됩니다.
-
-```markdown
-Syntax highlighted code block
-
-# Header 1
-## Header 2
-### Header 3
-
-- Bulleted
-- List
-
-1. Numbered
-2. List
-
-**Bold** and _Italic_ and `Code` text
-
-[Link](url) and ![Image](src)
+# 프로젝트 디렉토리로 이동
+cd chat-rooms
 ```
 
-자세한 내용은 [GitHub Flavored Markdown](https://guides.github.com/features/mastering-markdown/).
+## 설치
 
-### Support or Contact
+```bash
+# 서버 의존성 설치
+npm install
 
-readme 파일 생성에 추가적인 도움이 필요하면 [도움말](https://help.github.com/articles/about-readmes/) 이나 [contact support](https://github.com/contact) 을 이용하세요.
+# 클라이언트 의존성 설치
+cd client
+npm install
+cd ..
+```
+
+## 실행 방법
+
+### 1. 클라이언트 빌드
+
+```bash
+npm run build:client
+```
+
+### 2. 서버 실행
+
+```bash
+npm run dev:server
+```
+
+### 3. 브라우저에서 접속
+
+```
+http://localhost:3000
+```
+
+채팅 테스트를 하려면 브라우저 탭을 2개 열어서 같은 주소(`http://localhost:3000`)로 접속한 뒤, 각각 다른 사용자 이름을 입력하고 같은 대화방에 참여하면 됩니다.
+
+## 테스트
+
+```bash
+npm test
+```
+
+## 기술 스택
+
+- 프론트엔드: React, TypeScript, Vite, Socket.IO Client
+- 백엔드: Node.js, Express, Socket.IO, SQLite (better-sqlite3)
+>>>>>>> my-chat/main
