@@ -558,7 +558,10 @@ function HomePage() {
 
       {/* 전체 모임 */}
       {!searched && isLoggedIn && visibleGroups.length > 0 && (
-        <div style={{ fontSize: 16, fontWeight: 700, color: '#3D2E1E', marginBottom: 12 }}>🌐 전체 모임</div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <span style={{ fontSize: 16, fontWeight: 700, color: '#3D2E1E' }}>🌐 전체 모임</span>
+          <button onClick={() => navigate('/groups/new')} style={{ padding: '6px 14px', fontSize: 12, fontWeight: 600, backgroundColor: '#4E342E', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}>+ 모임생성</button>
+        </div>
       )}
 
       {loading ? (

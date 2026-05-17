@@ -235,7 +235,7 @@ function MyPage() {
       {/* 내 독서 클럽 */}
       <div>
         {/* 상태 필터 탭 */}
-        <div style={{ display: 'flex', gap: 0, borderBottom: '2px solid #E8DFD3', marginBottom: 12 }}>
+        <div style={{ display: 'flex', gap: 0, borderBottom: '2px solid #E8DFD3', marginBottom: 12, alignItems: 'center' }}>
           {([['all', '전체'], ['reading', '진행중'], ['before', '시작 전'], ['ended', '종료']] as const).map(([key, label]) => (
             <button
               key={key}
@@ -245,8 +245,8 @@ function MyPage() {
           ))}
         </div>
 
-        {/* 정렬 */}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+        {/* 정렬 + 모임생성 */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
           <select
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value as 'deadline' | 'recent')}
@@ -255,6 +255,7 @@ function MyPage() {
             <option value="deadline">마감기한 순</option>
             <option value="recent">최근 가입순</option>
           </select>
+          <button onClick={() => navigate('/groups/new')} style={{ padding: '6px 14px', fontSize: 12, fontWeight: 600, backgroundColor: '#4E342E', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}>+ 모임생성</button>
         </div>
 
         {(() => {
