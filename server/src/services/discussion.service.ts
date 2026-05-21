@@ -529,7 +529,10 @@ export const discussionService = {
     assertReadingPeriodOpen(discussion.group.readingStartDate, discussion.group.readingEndDate);
     if (discussion._count.comments > 0) throw new AppError(409, 'HAS_COMMENTS', '댓글이 있는 스레드는 삭제할 수 없습니다');
 
-    await prisma.discussion.delete({ where: { id: discussionId } });
+    await prisma.$transaction(async (tx) => {
+      await tx.discussionToken.deleteMany({ where: { discussionId } });
+      await tx.discussion.delete({ where: { id: discussionId } });
+    });
   },
 
   // 의견 수정 (작성자)

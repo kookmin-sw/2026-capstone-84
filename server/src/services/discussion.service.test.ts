@@ -1,12 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const mockPrisma = vi.hoisted(() => ({
+  $transaction: vi.fn(async (callback: any) => callback(mockPrisma)),
   discussion: {
     create: vi.fn(),
     findUnique: vi.fn(),
     findMany: vi.fn(),
     updateMany: vi.fn(),
     count: vi.fn(),
+    delete: vi.fn(),
+  },
+  discussionToken: {
+    deleteMany: vi.fn(),
   },
   comment: {
     create: vi.fn(),
@@ -211,6 +216,44 @@ describe('DiscussionService', () => {
           where: { groupId: 'group-1', authorId: 'user-1' },
         }),
       );
+    });
+  });
+
+  describe('deleteTopic', () => {
+    it('should delete discussion tokens before deleting an empty discussion', async () => {
+      mockPrisma.discussion.findUnique.mockResolvedValue({
+        id: 'disc-1',
+        authorId: 'user-1',
+        group: openGroup,
+        _count: { comments: 0 },
+      });
+      mockPrisma.discussionToken.deleteMany.mockResolvedValue({ count: 2 });
+      mockPrisma.discussion.delete.mockResolvedValue({ id: 'disc-1' });
+
+      await discussionService.deleteTopic('disc-1', 'user-1');
+
+      expect(mockPrisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(mockPrisma.discussionToken.deleteMany).toHaveBeenCalledWith({
+        where: { discussionId: 'disc-1' },
+      });
+      expect(mockPrisma.discussion.delete).toHaveBeenCalledWith({
+        where: { id: 'disc-1' },
+      });
+    });
+
+    it('should not delete a discussion that has comments', async () => {
+      mockPrisma.discussion.findUnique.mockResolvedValue({
+        id: 'disc-1',
+        authorId: 'user-1',
+        group: openGroup,
+        _count: { comments: 1 },
+      });
+
+      await expect(discussionService.deleteTopic('disc-1', 'user-1')).rejects.toThrow(AppError);
+
+      expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+      expect(mockPrisma.discussionToken.deleteMany).not.toHaveBeenCalled();
+      expect(mockPrisma.discussion.delete).not.toHaveBeenCalled();
     });
   });
 
