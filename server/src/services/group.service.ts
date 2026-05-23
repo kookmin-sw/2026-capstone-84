@@ -492,10 +492,16 @@ export const groupService = {
 
     // 연관 데이터 삭제 (순서 중요: FK 의존성)
     await prisma.$transaction(async (tx: TransactionClient) => {
+      await tx.notification.deleteMany({ where: { groupId } });
       await tx.reply.deleteMany({ where: { comment: { discussion: { groupId } } } });
       await tx.comment.deleteMany({ where: { discussion: { groupId } } });
+      await tx.discussionToken.deleteMany({ where: { discussion: { groupId } } });
       await tx.discussion.deleteMany({ where: { groupId } });
       await tx.memo.deleteMany({ where: { groupId } });
+      await tx.announcement.deleteMany({ where: { groupId } });
+      await tx.discussionSchedule.deleteMany({ where: { groupId } });
+      await tx.discussionInsight.deleteMany({ where: { groupId } });
+      await tx.groupBan.deleteMany({ where: { groupId } });
       await tx.groupTag.deleteMany({ where: { groupId } });
       await tx.groupMember.deleteMany({ where: { groupId } });
       await tx.group.delete({ where: { id: groupId } });
