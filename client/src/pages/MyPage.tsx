@@ -172,7 +172,6 @@ function MyPage() {
                   </span>
                 )}
               </div>
-              <div style={s.email}>{profile.email}</div>
             </div>
             <button onClick={() => setShowQuests(!showQuests)} style={{ width: 36, height: 36, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, background: showQuests ? '#C8962E' : '#FFF8E7', border: '2px solid #E8DFD3', cursor: 'pointer', transition: 'all 0.2s' }} title="일일 퀘스트">🎯</button>
             <button style={s.logoutBtn} onClick={handleLogout}>로그아웃</button>
@@ -225,7 +224,7 @@ function MyPage() {
           <div style={s.profileTop}>
             <div style={{ flex: 1 }}>
               <div style={s.nickname}>로그인 정보를 확인할 수 없습니다</div>
-              <div style={s.email}>다시 로그인해주세요.</div>
+              <div style={s.helperText}>다시 로그인해주세요.</div>
             </div>
             <button style={s.logoutBtn} onClick={handleLogout}>로그아웃</button>
           </div>
@@ -455,7 +454,7 @@ const s: Record<string, React.CSSProperties> = {
   profileTop: { display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 },
   avatar: { width: 56, height: 56, borderRadius: '50%', background: '#4E342E', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 22, fontWeight: 700, flexShrink: 0 },
   nickname: { fontSize: 20, fontWeight: 800, color: '#3D2E1E', letterSpacing: '-0.3px' },
-  email: { fontSize: 13, color: '#718096', marginTop: 2 },
+  helperText: { fontSize: 13, color: '#718096', marginTop: 2 },
   logoutBtn: { padding: '8px 16px', background: 'none', color: '#e53e3e', border: '1px solid #fed7d7', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer' },
   notificationBtn: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, padding: '9px 12px', backgroundColor: '#f7fbff', color: '#C8962E', border: '1px solid #E8DFD3', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' },
   notificationCount: { display: 'inline-block', backgroundColor: '#e53e3e', color: '#fff', padding: '2px 8px', borderRadius: 12, fontSize: 12, fontWeight: 700 },

@@ -8,6 +8,7 @@ import type { User } from '../types';
 const MAX_PROFILE_IMAGE_SIZE = 1024 * 1024;
 const ALLOWED_PROFILE_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
 const PROFILE_IMAGE_HELP_TEXT = '제한 용량: 1MB 지원 형식: JPG, PNG, GIF, WEBP';
+const NICKNAME_CHANGE_NOTICE = '엑스포 기간에는 닉네임으로 로그인합니다. 다른 사용자와의 혼선을 막기 위해 닉네임 변경은 제한됩니다.';
 
 function SettingsPage() {
   const navigate = useNavigate();
@@ -19,12 +20,6 @@ function SettingsPage() {
   const [imagePreview, setImagePreview] = useState('');
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imageSaving, setImageSaving] = useState(false);
-
-  // 닉네임
-  const [editingNickname, setEditingNickname] = useState(false);
-  const [newNickname, setNewNickname] = useState('');
-  const [nicknameAvailable, setNicknameAvailable] = useState<boolean | null>(null);
-  const [nicknameError, setNicknameError] = useState('');
 
   // 비밀번호
   const [showPwForm, setShowPwForm] = useState(false);
@@ -72,28 +67,6 @@ function SettingsPage() {
       setImageFile(file);
       setImagePreview(URL.createObjectURL(file));
     }
-  };
-
-  // 닉네임 중복확인
-  const handleCheckNickname = async () => {
-    if (!newNickname.trim()) { setNicknameError('닉네임을 입력해주세요'); return; }
-    setNicknameError('');
-    try {
-      const res = await mypageApi.checkNickname(newNickname);
-      setNicknameAvailable(res.data.available);
-      if (!res.data.available) setNicknameError('이미 사용 중인 닉네임입니다');
-    } catch { setNicknameError('확인 중 오류 발생'); }
-  };
-
-  // 닉네임 저장
-  const handleSaveNickname = async () => {
-    if (!nicknameAvailable) return;
-    try {
-      const res = await mypageApi.updateNickname(newNickname);
-      setProfile(res.data);
-      setEditingNickname(false);
-      setNicknameAvailable(null);
-    } catch { setNicknameError('변경 실패'); }
   };
 
   // 비밀번호 변경
@@ -185,30 +158,12 @@ function SettingsPage() {
       <div style={st.section}>
         <div style={st.groupTitle}>계정</div>
         <div style={st.item}>
-          <span>이메일</span>
-          <span style={{ color: '#718096' }}>{profile?.email || '—'}</span>
-        </div>
-        <div style={st.item}>
           <span>닉네임</span>
-          {!editingNickname ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ color: '#718096' }}>{profile?.nickname || '—'}</span>
-              <button onClick={() => { setEditingNickname(true); setNewNickname(profile?.nickname || ''); }} style={st.editBtn}>수정</button>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <input type="text" value={newNickname} onChange={(e) => { setNewNickname(e.target.value); setNicknameAvailable(null); setNicknameError(''); }} style={{ ...st.input, width: 120 }} />
-              {!nicknameAvailable ? (
-                <button onClick={handleCheckNickname} style={st.editBtn}>중복확인</button>
-              ) : (
-                <button onClick={handleSaveNickname} style={{ ...st.editBtn, color: '#38a169', borderColor: '#c6f6d5' }}>저장</button>
-              )}
-              <button onClick={() => setEditingNickname(false)} style={{ ...st.editBtn, color: '#718096' }}>취소</button>
-            </div>
-          )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ color: '#718096' }}>{profile?.nickname || '—'}</span>
+            <button onClick={() => alert(NICKNAME_CHANGE_NOTICE)} style={st.editBtn}>수정</button>
+          </div>
         </div>
-        {nicknameError && <div style={{ fontSize: 12, color: '#e53e3e', paddingLeft: 4 }}>{nicknameError}</div>}
-        {nicknameAvailable && <div style={{ fontSize: 12, color: '#38a169', paddingLeft: 4 }}>사용 가능</div>}
 
         {/* 비밀번호 - 소셜 로그인이 아닌 경우만 */}
         {(profile as any)?.provider === 'local' && (

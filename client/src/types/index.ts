@@ -13,13 +13,10 @@ export interface AuthTokens {
 }
 
 export interface LoginRequest {
-  email: string;
-  password: string;
+  nickname: string;
 }
 
 export interface SignupRequest {
-  email: string;
-  password: string;
   nickname: string;
 }
 

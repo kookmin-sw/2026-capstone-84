@@ -15,7 +15,6 @@ vi.mock('@prisma/client', () => ({
 }));
 
 import authRouter from './auth.routes';
-import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 
 const app = express();
@@ -32,84 +31,76 @@ describe('Auth Routes', () => {
       mockPrisma.user.findUnique.mockResolvedValue(null);
       mockPrisma.user.create.mockResolvedValue({
         id: 'user-1',
-        email: 'test@example.com',
-        passwordHash: 'hashed',
+        email: 'expo-user@expo.local',
+        passwordHash: null,
         nickname: 'tester',
         createdAt: new Date('2024-01-01'),
       });
 
       const res = await request(app)
         .post('/api/auth/signup')
-        .send({ email: 'test@example.com', password: 'password123', nickname: 'tester' });
+        .send({ nickname: 'tester' });
 
       expect(res.status).toBe(201);
       expect(res.body).toHaveProperty('id');
-      expect(res.body.email).toBe('test@example.com');
       expect(res.body.nickname).toBe('tester');
       expect(res.body).not.toHaveProperty('passwordHash');
     });
 
-    it('should return 400 for invalid email', async () => {
+    it('should return 400 for missing nickname', async () => {
       const res = await request(app)
         .post('/api/auth/signup')
-        .send({ email: 'not-an-email', password: 'password123', nickname: 'tester' });
+        .send({});
 
       expect(res.status).toBe(400);
       expect(res.body.error.code).toBe('VALIDATION_ERROR');
     });
 
-    it('should return 400 for short password', async () => {
+    it('should return 400 for too long nickname', async () => {
       const res = await request(app)
         .post('/api/auth/signup')
-        .send({ email: 'test@example.com', password: 'short', nickname: 'tester' });
+        .send({ nickname: 'a'.repeat(51) });
 
       expect(res.status).toBe(400);
       expect(res.body.error.code).toBe('VALIDATION_ERROR');
-      expect(res.body.error.message).toContain('8자');
     });
 
-    it('should return 409 for duplicate email', async () => {
+    it('should return 409 for duplicate nickname', async () => {
       mockPrisma.user.findUnique.mockResolvedValue({ id: 'existing' });
 
       const res = await request(app)
         .post('/api/auth/signup')
-        .send({ email: 'existing@example.com', password: 'password123', nickname: 'tester' });
+        .send({ nickname: 'tester' });
 
       expect(res.status).toBe(409);
-      expect(res.body.error.code).toBe('DUPLICATE_EMAIL');
+      expect(res.body.error.code).toBe('DUPLICATE_NICKNAME');
     });
   });
 
   describe('POST /api/auth/login', () => {
     it('should return tokens for valid login', async () => {
-      const hashedPassword = await bcrypt.hash('password123', 10);
       mockPrisma.user.findUnique.mockResolvedValue({
         id: 'user-1',
         email: 'test@example.com',
-        passwordHash: hashedPassword,
+        passwordHash: null,
         nickname: 'tester',
       });
 
       const res = await request(app)
         .post('/api/auth/login')
-        .send({ email: 'test@example.com', password: 'password123' });
+        .send({ nickname: 'tester' });
 
       expect(res.status).toBe(200);
       expect(res.body).toHaveProperty('accessToken');
       expect(res.body).toHaveProperty('refreshToken');
     });
 
-    it('should return 401 for wrong password', async () => {
-      const hashedPassword = await bcrypt.hash('correctpassword', 10);
-      mockPrisma.user.findUnique.mockResolvedValue({
-        id: 'user-1',
-        email: 'test@example.com',
-        passwordHash: hashedPassword,
-      });
+    it('should return 401 for unknown nickname', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue(null);
 
       const res = await request(app)
         .post('/api/auth/login')
-        .send({ email: 'test@example.com', password: 'wrongpassword' });
+        .send({ nickname: 'unknown' });
 
       expect(res.status).toBe(401);
       expect(res.body.error.code).toBe('INVALID_CREDENTIALS');
@@ -118,7 +109,7 @@ describe('Auth Routes', () => {
     it('should return 400 for missing fields', async () => {
       const res = await request(app)
         .post('/api/auth/login')
-        .send({ email: 'test@example.com' });
+        .send({});
 
       expect(res.status).toBe(400);
       expect(res.body.error.code).toBe('VALIDATION_ERROR');

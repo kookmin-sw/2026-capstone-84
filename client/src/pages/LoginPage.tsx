@@ -26,9 +26,53 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 24,
     fontWeight: 800,
     textAlign: 'center' as const,
-    marginBottom: 28,
+    marginBottom: 8,
     letterSpacing: '-0.5px',
     color: '#3D2E1E',
+  },
+  description: {
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 24,
+    fontSize: 13,
+    color: '#718096',
+    textAlign: 'center' as const,
+    lineHeight: 1.5,
+  },
+  helpIcon: {
+    position: 'relative' as const,
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 18,
+    height: 18,
+    borderRadius: '50%',
+    backgroundColor: '#FFF8E7',
+    color: '#C8962E',
+    border: '1px solid #E8DFD3',
+    fontSize: 12,
+    fontWeight: 700,
+    cursor: 'help',
+    flexShrink: 0,
+  },
+  tooltip: {
+    display: 'none',
+    position: 'absolute' as const,
+    top: '140%',
+    left: '50%',
+    transform: 'translateX(-50%)',
+    width: 220,
+    padding: '9px 12px',
+    backgroundColor: '#3D2E1E',
+    color: '#fff',
+    borderRadius: 8,
+    fontSize: 12,
+    lineHeight: 1.5,
+    fontWeight: 500,
+    boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+    zIndex: 10,
   },
   field: {
     marginBottom: 18,
@@ -97,19 +141,14 @@ const styles: Record<string, React.CSSProperties> = {
 };
 
 interface FormErrors {
-  email?: string;
-  password?: string;
+  nickname?: string;
 }
 
-function validateForm(email: string, password: string): FormErrors {
+function validateForm(nickname: string): FormErrors {
   const errors: FormErrors = {};
 
-  if (!email.trim()) {
-    errors.email = '이메일을 입력해주세요';
-  }
-
-  if (!password) {
-    errors.password = '비밀번호를 입력해주세요';
+  if (!nickname.trim()) {
+    errors.nickname = '닉네임을 입력해주세요';
   }
 
   return errors;
@@ -121,7 +160,7 @@ function LoginPage() {
   const setTokens = useAuthStore((s) => s.setTokens);
   const setUser = useAuthStore((s) => s.setUser);
   const redirectPath = searchParams.get('redirect') || '/';
-  const [email, setEmail] = useState('');
+  const [nickname, setNickname] = useState('');
 
   // 카카오 콜백 처리
   useEffect(() => {
@@ -138,7 +177,6 @@ function LoginPage() {
       setServerError('카카오 로그인에 실패했습니다. 다시 시도해주세요.');
     }
   }, [searchParams]);
-  const [password, setPassword] = useState('');
   const [errors, setErrors] = useState<FormErrors>({});
   const [serverError, setServerError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -147,20 +185,20 @@ function LoginPage() {
     e.preventDefault();
     setServerError('');
 
-    const formErrors = validateForm(email, password);
+    const formErrors = validateForm(nickname);
     setErrors(formErrors);
     if (Object.keys(formErrors).length > 0) return;
 
     setLoading(true);
     try {
-      const { data } = await authApi.login({ email, password });
+      const { data } = await authApi.login({ nickname });
       setTokens(data.accessToken, data.refreshToken);
       const profile = await mypageApi.getProfile();
       setUser(profile.data);
       navigate(redirectPath);
     } catch (err) {
       const axiosErr = err as AxiosError<ApiError>;
-      const msg = axiosErr.response?.data?.error?.message || '이메일 또는 비밀번호가 올바르지 않습니다';
+      const msg = axiosErr.response?.data?.error?.message || '등록되지 않은 닉네임입니다';
       setServerError(msg);
     } finally {
       setLoading(false);
@@ -170,34 +208,49 @@ function LoginPage() {
   return (
     <div style={styles.container}>
       <div style={styles.card}>
-        <h1 style={styles.title}>로그인</h1>
+        <h1 style={styles.title}>닉네임 로그인</h1>
+        <div style={styles.description}>
+          <span>
+            엑스포 기간에는 닉네임만으로
+            <br />
+            간편하게 로그인할 수 있습니다.
+          </span>
+          <span
+            style={styles.helpIcon}
+            onMouseEnter={(e) => {
+              const tooltip = e.currentTarget.querySelector('[data-tooltip]') as HTMLElement | null;
+              if (tooltip) tooltip.style.display = 'block';
+            }}
+            onMouseLeave={(e) => {
+              const tooltip = e.currentTarget.querySelector('[data-tooltip]') as HTMLElement | null;
+              if (tooltip) tooltip.style.display = 'none';
+            }}
+            aria-label="로그인 안내"
+          >
+            ?
+            <span data-tooltip="" style={styles.tooltip}>
+              실제 서비스에서는
+              <br />
+              이메일, 카카오톡으로
+              <br />
+              로그인이 진행됩니다.
+            </span>
+          </span>
+        </div>
         <form onSubmit={handleSubmit} noValidate>
           {serverError && <div style={styles.serverError}>{serverError}</div>}
 
           <div style={styles.field}>
-            <label style={styles.label} htmlFor="email">이메일</label>
+            <label style={styles.label} htmlFor="nickname">닉네임</label>
             <input
-              id="email"
-              type="email"
-              style={{ ...styles.input, ...(errors.email ? styles.inputError : {}) }}
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="example@email.com"
+              id="nickname"
+              type="text"
+              style={{ ...styles.input, ...(errors.nickname ? styles.inputError : {}) }}
+              value={nickname}
+              onChange={(e) => setNickname(e.target.value)}
+              placeholder="닉네임"
             />
-            {errors.email && <div style={styles.errorText}>{errors.email}</div>}
-          </div>
-
-          <div style={styles.field}>
-            <label style={styles.label} htmlFor="password">비밀번호</label>
-            <input
-              id="password"
-              type="password"
-              style={{ ...styles.input, ...(errors.password ? styles.inputError : {}) }}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="비밀번호"
-            />
-            {errors.password && <div style={styles.errorText}>{errors.password}</div>}
+            {errors.nickname && <div style={styles.errorText}>{errors.nickname}</div>}
           </div>
 
           <button
@@ -209,30 +262,8 @@ function LoginPage() {
           </button>
         </form>
 
-        <div style={{ margin: '16px 0', textAlign: 'center' as const, color: '#a0aec0', fontSize: 13 }}>또는</div>
-
-        <a
-          href="/api/auth/kakao"
-          style={{
-            display: 'block',
-            width: '100%',
-            padding: '13px 0',
-            backgroundColor: '#FEE500',
-            color: '#191919',
-            border: 'none',
-            borderRadius: 10,
-            fontSize: 16,
-            fontWeight: 700,
-            textAlign: 'center' as const,
-            textDecoration: 'none',
-            boxSizing: 'border-box' as const,
-          }}
-        >
-          카카오로 시작하기
-        </a>
-
         <Link to="/signup" style={styles.link}>
-          계정이 없으신가요? 회원가입
+          닉네임이 없으신가요? 회원가입
         </Link>
       </div>
     </div>

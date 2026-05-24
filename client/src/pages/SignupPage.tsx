@@ -85,26 +85,11 @@ const styles: Record<string, React.CSSProperties> = {
 };
 
 interface FormErrors {
-  email?: string;
-  password?: string;
   nickname?: string;
 }
 
-function validateForm(email: string, password: string, nickname: string): FormErrors {
+function validateForm(nickname: string): FormErrors {
   const errors: FormErrors = {};
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-  if (!email.trim()) {
-    errors.email = '이메일을 입력해주세요';
-  } else if (!emailRegex.test(email)) {
-    errors.email = '올바른 이메일 형식이 아닙니다';
-  }
-
-  if (!password) {
-    errors.password = '비밀번호를 입력해주세요';
-  } else if (password.length < 8) {
-    errors.password = '비밀번호는 8자 이상이어야 합니다';
-  }
 
   if (!nickname.trim()) {
     errors.nickname = '닉네임을 입력해주세요';
@@ -115,8 +100,6 @@ function validateForm(email: string, password: string, nickname: string): FormEr
 
 function SignupPage() {
   const navigate = useNavigate();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const [nickname, setNickname] = useState('');
   const [errors, setErrors] = useState<FormErrors>({});
   const [serverError, setServerError] = useState('');
@@ -149,13 +132,13 @@ function SignupPage() {
     e.preventDefault();
     setServerError('');
 
-    const formErrors = validateForm(email, password, nickname);
+    const formErrors = validateForm(nickname);
     setErrors(formErrors);
     if (Object.keys(formErrors).length > 0) return;
 
     setLoading(true);
     try {
-      await authApi.signup({ email, password, nickname });
+      await authApi.signup({ nickname });
       navigate('/login');
     } catch (err) {
       const axiosErr = err as AxiosError<ApiError>;
@@ -169,35 +152,9 @@ function SignupPage() {
   return (
     <div style={styles.container}>
       <div style={styles.card}>
-        <h1 style={styles.title}>회원가입</h1>
+        <h1 style={styles.title}>닉네임 만들기</h1>
         <form onSubmit={handleSubmit} noValidate>
           {serverError && <div style={styles.serverError}>{serverError}</div>}
-
-          <div style={styles.field}>
-            <label style={styles.label} htmlFor="email">이메일</label>
-            <input
-              id="email"
-              type="email"
-              style={{ ...styles.input, ...(errors.email ? styles.inputError : {}) }}
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="example@email.com"
-            />
-            {errors.email && <div style={styles.errorText}>{errors.email}</div>}
-          </div>
-
-          <div style={styles.field}>
-            <label style={styles.label} htmlFor="password">비밀번호</label>
-            <input
-              id="password"
-              type="password"
-              style={{ ...styles.input, ...(errors.password ? styles.inputError : {}) }}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="8자 이상"
-            />
-            {errors.password && <div style={styles.errorText}>{errors.password}</div>}
-          </div>
 
           <div style={styles.field}>
             <label style={styles.label} htmlFor="nickname">닉네임</label>
@@ -242,12 +199,12 @@ function SignupPage() {
             style={{ ...styles.button, ...(loading ? styles.buttonDisabled : {}) }}
             disabled={loading}
           >
-            {loading ? '가입 중...' : '회원가입'}
+            {loading ? '생성 중...' : '닉네임 생성'}
           </button>
         </form>
 
         <Link to="/login" style={styles.link}>
-          이미 계정이 있으신가요? 로그인
+          이미 닉네임이 있으신가요? 로그인
         </Link>
       </div>
     </div>

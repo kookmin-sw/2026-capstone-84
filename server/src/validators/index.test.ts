@@ -12,36 +12,21 @@ import {
 describe('SignupSchema', () => {
   it('유효한 입력을 통과시킨다', () => {
     const result = SignupSchema.safeParse({
-      email: 'test@example.com',
-      password: 'password123',
       nickname: '테스터',
     });
     expect(result.success).toBe(true);
   });
 
-  it('잘못된 이메일 형식을 거부한다', () => {
-    const result = SignupSchema.safeParse({
-      email: 'invalid-email',
-      password: 'password123',
-      nickname: '테스터',
-    });
-    expect(result.success).toBe(false);
-  });
-
-  it('8자 미만 비밀번호를 거부한다', () => {
-    const result = SignupSchema.safeParse({
-      email: 'test@example.com',
-      password: 'short',
-      nickname: '테스터',
-    });
-    expect(result.success).toBe(false);
-  });
-
   it('빈 닉네임을 거부한다', () => {
     const result = SignupSchema.safeParse({
-      email: 'test@example.com',
-      password: 'password123',
       nickname: '',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('50자를 초과하는 닉네임을 거부한다', () => {
+    const result = SignupSchema.safeParse({
+      nickname: 'a'.repeat(51),
     });
     expect(result.success).toBe(false);
   });
@@ -51,24 +36,21 @@ describe('SignupSchema', () => {
 describe('LoginSchema', () => {
   it('유효한 입력을 통과시킨다', () => {
     const result = LoginSchema.safeParse({
-      email: 'test@example.com',
-      password: 'password123',
+      nickname: '테스터',
     });
     expect(result.success).toBe(true);
   });
 
-  it('잘못된 이메일 형식을 거부한다', () => {
+  it('빈 닉네임을 거부한다', () => {
     const result = LoginSchema.safeParse({
-      email: 'not-email',
-      password: 'password123',
+      nickname: '',
     });
     expect(result.success).toBe(false);
   });
 
-  it('빈 비밀번호를 거부한다', () => {
+  it('50자를 초과하는 닉네임을 거부한다', () => {
     const result = LoginSchema.safeParse({
-      email: 'test@example.com',
-      password: '',
+      nickname: 'a'.repeat(51),
     });
     expect(result.success).toBe(false);
   });

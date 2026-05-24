@@ -1,5 +1,4 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 
 // Mock PrismaClient - vi.hoisted ensures the mock is available before vi.mock hoisting
@@ -22,60 +21,56 @@ describe('AuthService', () => {
   });
 
   describe('signup', () => {
-    it('should create a new user with hashed password', async () => {
+    it('should create a new user with nickname only', async () => {
       mockPrisma.user.findUnique.mockResolvedValue(null);
       mockPrisma.user.create.mockResolvedValue({
         id: 'user-1',
-        email: 'test@example.com',
-        passwordHash: 'hashed',
+        email: 'expo-user@expo.local',
+        passwordHash: null,
         nickname: 'tester',
+        provider: 'expo',
         createdAt: new Date(),
       });
 
-      const user = await authService.signup('test@example.com', 'password123', 'tester');
+      const user = await authService.signup('tester');
 
-      expect(user.email).toBe('test@example.com');
       expect(user.nickname).toBe('tester');
       expect(mockPrisma.user.create).toHaveBeenCalledWith({
         data: {
-          email: 'test@example.com',
-          passwordHash: expect.any(String),
+          email: expect.stringMatching(/^expo_.+@expo\.local$/),
           nickname: 'tester',
+          provider: 'expo',
         },
       });
-      // Verify password was hashed (not stored as plain text)
-      const createCall = mockPrisma.user.create.mock.calls[0][0];
-      expect(createCall.data.passwordHash).not.toBe('password123');
     });
 
-    it('should throw DUPLICATE_EMAIL for existing email', async () => {
+    it('should throw DUPLICATE_NICKNAME for existing nickname', async () => {
       mockPrisma.user.findUnique.mockResolvedValue({ id: 'existing' });
 
       await expect(
-        authService.signup('existing@example.com', 'password123', 'tester'),
+        authService.signup('tester'),
       ).rejects.toThrow(AppError);
 
       try {
-        await authService.signup('existing@example.com', 'password123', 'tester');
+        await authService.signup('tester');
       } catch (err) {
         expect(err).toBeInstanceOf(AppError);
-        expect((err as AppError).code).toBe('DUPLICATE_EMAIL');
+        expect((err as AppError).code).toBe('DUPLICATE_NICKNAME');
         expect((err as AppError).statusCode).toBe(409);
       }
     });
   });
 
   describe('login', () => {
-    it('should return tokens for valid credentials', async () => {
-      const hashedPassword = await bcrypt.hash('password123', 10);
+    it('should return tokens for an existing nickname', async () => {
       mockPrisma.user.findUnique.mockResolvedValue({
         id: 'user-1',
         email: 'test@example.com',
-        passwordHash: hashedPassword,
+        passwordHash: null,
         nickname: 'tester',
       });
 
-      const result = await authService.login('test@example.com', 'password123');
+      const result = await authService.login('tester');
 
       expect(result).toHaveProperty('accessToken');
       expect(result).toHaveProperty('refreshToken');
@@ -83,11 +78,11 @@ describe('AuthService', () => {
       expect(typeof result.refreshToken).toBe('string');
     });
 
-    it('should throw INVALID_CREDENTIALS for non-existent email', async () => {
+    it('should throw INVALID_CREDENTIALS for non-existent nickname', async () => {
       mockPrisma.user.findUnique.mockResolvedValue(null);
 
       try {
-        await authService.login('nonexistent@example.com', 'password123');
+        await authService.login('unknown');
         expect.fail('Should have thrown');
       } catch (err) {
         expect(err).toBeInstanceOf(AppError);
@@ -96,22 +91,6 @@ describe('AuthService', () => {
       }
     });
 
-    it('should throw INVALID_CREDENTIALS for wrong password', async () => {
-      const hashedPassword = await bcrypt.hash('correctpassword', 10);
-      mockPrisma.user.findUnique.mockResolvedValue({
-        id: 'user-1',
-        email: 'test@example.com',
-        passwordHash: hashedPassword,
-      });
-
-      try {
-        await authService.login('test@example.com', 'wrongpassword');
-        expect.fail('Should have thrown');
-      } catch (err) {
-        expect(err).toBeInstanceOf(AppError);
-        expect((err as AppError).code).toBe('INVALID_CREDENTIALS');
-      }
-    });
   });
 
   describe('refreshToken', () => {

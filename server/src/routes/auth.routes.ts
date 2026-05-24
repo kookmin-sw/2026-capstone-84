@@ -12,7 +12,7 @@ const router = Router();
 // GET /api/auth/check-nickname?nickname=xxx (인증 불필요)
 router.get('/check-nickname', async (req: Request, res: Response) => {
   try {
-    const nickname = req.query.nickname as string;
+    const nickname = (req.query.nickname as string)?.trim();
     if (!nickname || nickname.trim().length === 0) {
       res.status(400).json({
         error: { code: 'VALIDATION_ERROR', message: '닉네임을 입력해주세요' },
@@ -51,8 +51,8 @@ router.post('/signup', async (req: Request, res: Response) => {
       return;
     }
 
-    const { email, password, nickname } = parsed.data;
-    const user = await authService.signup(email, password, nickname);
+    const { nickname } = parsed.data;
+    const user = await authService.signup(nickname);
 
     res.status(201).json({
       id: user.id,
@@ -87,8 +87,8 @@ router.post('/login', async (req: Request, res: Response) => {
       return;
     }
 
-    const { email, password } = parsed.data;
-    const tokens = await authService.login(email, password);
+    const { nickname } = parsed.data;
+    const tokens = await authService.login(nickname);
 
     res.json(tokens);
   } catch (err) {
