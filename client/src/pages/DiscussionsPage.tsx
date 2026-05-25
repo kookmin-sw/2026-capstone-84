@@ -6,7 +6,7 @@ import { groupsApi } from '../api/groups';
 import { aiApi, type AiTopic } from '../api/ai';
 import { showToast } from '../api/client';
 import { useAuthStore } from '../stores/authStore';
-import type { Discussion, Memo, RecommendedTopic, ApiError, GroupDetail } from '../types';
+import type { Discussion, Memo, ApiError, GroupDetail } from '../types';
 import { AxiosError } from 'axios';
 import { getReadingPeriodWriteBlockMessage, isOutsideReadingPeriod } from '../utils/readingPeriod';
 import PageHeader from '../components/PageHeader';
@@ -271,7 +271,6 @@ function DiscussionsPage() {
   const accessToken = useAuthStore((s) => s.accessToken);
 
   const [discussions, setDiscussions] = useState<Discussion[]>([]);
-  const [recommendations, setRecommendations] = useState<RecommendedTopic[]>([]);
   const [aiTopics, setAiTopics] = useState<AiTopic[]>([]);
   const [aiLoading, setAiLoading] = useState(false);
   const [myMemos, setMyMemos] = useState<Memo[]>([]);
@@ -331,14 +330,12 @@ function DiscussionsPage() {
       const params: any = {};
       if (filterMode === 'authored' && currentUserId) params.authorId = currentUserId;
       if (filterMode === 'participated' && currentUserId) params.participantId = currentUserId;
-      const [discRes, recRes, memoRes, groupRes] = await Promise.all([
+      const [discRes, memoRes, groupRes] = await Promise.all([
         discussionsApi.listByGroup(groupId!, params),
-        discussionsApi.getRecommendations(groupId!).catch(() => ({ data: [] as RecommendedTopic[] })),
         memosApi.listByGroup(groupId!).catch(() => ({ data: { myMemos: [] as Memo[], publicMemos: [] as Memo[] } })),
         groupsApi.getDetail(groupId!).catch(() => ({ data: null })),
       ]);
       setDiscussions(discRes.data);
-      setRecommendations(recRes.data);
       setMyMemos(memoRes.data.myMemos || []);
       setGroupInfo(groupRes.data);
 
@@ -460,22 +457,6 @@ function DiscussionsPage() {
     } finally {
       setSubmitting(false);
     }
-  };
-
-  const handleSelectRecommendation = async (rec: RecommendedTopic) => {
-    if (!groupId) return;
-    if (isReadOnly) {
-      showToast(readOnlyMessage || '독서기간 중에만 스레드를 만들 수 있습니다');
-      return;
-    }
-    try {
-      await discussionsApi.create(groupId!, {
-        title: rec.title,
-        content: rec.content,
-      });
-      setShowCreateModal(false);
-      fetchData();
-    } catch { /* ignore */ }
   };
 
   const handleAiSuggest = async () => {
@@ -915,27 +896,6 @@ function DiscussionsPage() {
                 </div>
               )}
             </div>
-
-            {/* 추천 주제 */}
-            {recommendations.length > 0 && (
-              <div>
-                <hr style={{ border: 'none', borderTop: '1px solid #E8DFD3', margin: '20px 0' }} />
-                <div style={styles.sectionTitle}>✨ 추천 주제</div>
-                {recommendations.map((rec, i) => (
-                  <div
-                    key={i}
-                    style={styles.recCard}
-                    onClick={() => handleSelectRecommendation(rec)}
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(e) => e.key === 'Enter' && handleSelectRecommendation(rec)}
-                  >
-                    <div style={styles.recTitle}>{rec.title}</div>
-                    <div style={styles.recContent}>{rec.content}</div>
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
         </div>
       )}
