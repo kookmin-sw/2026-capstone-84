@@ -1,5 +1,5 @@
-import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 import { PrismaClient } from '@prisma/client';
 import { profanityService } from './profanity.service';
 
@@ -11,7 +11,6 @@ const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-key';
 const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'dev-refresh-secret-key';
 const ACCESS_TOKEN_EXPIRES_IN = '15m';
 const REFRESH_TOKEN_EXPIRES_IN = '7d';
-const SALT_ROUNDS = 10;
 
 export interface TokenPayload {
   userId: string;
@@ -30,16 +29,11 @@ export class AppError extends Error {
 }
 
 export const authService = {
-  async signup(email: string, password: string, nickname: string): Promise<User> {
+  async signup(nickname: string): Promise<User> {
     // 닉네임 욕설 필터링
     const nicknameCheck = profanityService.check(nickname);
     if (!nicknameCheck.isClean) {
       throw new AppError(400, 'PROFANITY_DETECTED', '부적절한 표현이 포함되어 있습니다. 수정 후 다시 시도해주세요.');
-    }
-
-    const existing = await prisma.user.findUnique({ where: { email } });
-    if (existing) {
-      throw new AppError(409, 'DUPLICATE_EMAIL', '이미 사용 중인 이메일입니다');
     }
 
     const existingNickname = await prisma.user.findUnique({ where: { nickname } });
@@ -47,27 +41,18 @@ export const authService = {
       throw new AppError(409, 'DUPLICATE_NICKNAME', '이미 사용 중인 닉네임입니다');
     }
 
-    const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
+    const email = `expo_${crypto.randomUUID()}@expo.local`;
     const user = await prisma.user.create({
-      data: { email, passwordHash, nickname },
+      data: { email, nickname, provider: 'expo' },
     });
 
     return user;
   },
 
-  async login(email: string, password: string): Promise<{ accessToken: string; refreshToken: string }> {
-    const user = await prisma.user.findUnique({ where: { email } });
+  async login(nickname: string): Promise<{ accessToken: string; refreshToken: string }> {
+    const user = await prisma.user.findUnique({ where: { nickname } });
     if (!user) {
-      throw new AppError(401, 'INVALID_CREDENTIALS', '이메일 또는 비밀번호가 올바르지 않습니다');
-    }
-
-    if (!user.passwordHash) {
-      throw new AppError(401, 'INVALID_CREDENTIALS', '소셜 로그인으로 가입된 계정입니다. 카카오 로그인을 이용해주세요.');
-    }
-
-    const isValid = await bcrypt.compare(password, user.passwordHash);
-    if (!isValid) {
-      throw new AppError(401, 'INVALID_CREDENTIALS', '이메일 또는 비밀번호가 올바르지 않습니다');
+      throw new AppError(401, 'INVALID_CREDENTIALS', '등록되지 않은 닉네임입니다');
     }
 
     const payload: TokenPayload = { userId: user.id, email: user.email };
