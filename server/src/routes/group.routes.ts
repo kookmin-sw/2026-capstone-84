@@ -13,7 +13,7 @@ router.get('/', optionalAuthMiddleware, async (req: AuthRequest, res: Response) 
     const searchType = typeof req.query.searchType === 'string' ? req.query.searchType : undefined;
     const sort = typeof req.query.sort === 'string' ? req.query.sort : undefined;
     const page = typeof req.query.page === 'string' ? parseInt(req.query.page, 10) : 1;
-    const limit = typeof req.query.limit === 'string' ? parseInt(req.query.limit, 10) : 10;
+    const limit = typeof req.query.limit === 'string' ? parseInt(req.query.limit, 10) : 30;
 
     const userId = req.user?.userId;
     const result = await groupService.list({ search, searchType, sort, page, limit }, userId);

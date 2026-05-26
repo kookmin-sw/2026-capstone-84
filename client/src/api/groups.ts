@@ -7,6 +7,7 @@ export const groupsApi = {
     searchType?: 'bookTitle' | 'groupName' | 'owner' | 'tag' | 'bookAuthor';
     sort?: 'createdDesc' | 'createdAsc' | 'startDesc' | 'startAsc' | 'endDesc' | 'endAsc';
     page?: number;
+    limit?: number;
   }) => {
     const res = await apiClient.get('/groups', { params });
     // 서버 응답: { items, total, page, limit, totalPages }

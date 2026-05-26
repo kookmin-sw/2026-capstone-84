@@ -234,6 +234,7 @@ function HomePage() {
       const params = {
         ...(query ? { search: query, searchType: type } : {}),
         sort: sortOption,
+        limit: 30,
       };
       const response = await groupsApi.list(params);
       // API 응답 구조에 따라 데이터가 없을 경우 빈 배열을 기본값으로 사용
