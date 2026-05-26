@@ -177,6 +177,11 @@ function MemosPage() {
       setMyMemos(memoRes.data.myMemos || []);
       setPublicMemos(memoRes.data.publicMemos || []);
       setSpoilerMemos(memoRes.data.spoilerMemos || []);
+      // 시작 페이지 기본값: 마지막 메모의 끝 페이지
+      const myMemoList = memoRes.data.myMemos || [];
+      if (myMemoList.length > 0 && !pageStart) {
+        setPageStart(String(myMemoList[0].pageEnd));
+      }
       if (groupRes.data) {
         setGroupInfo(groupRes.data);
         // 현재 사용자의 읽은 페이지 가져오기
@@ -227,7 +232,7 @@ function MemosPage() {
         visibility,
         image: memoImage || undefined,
       });
-      setPageStart('');
+      setPageStart(pageEnd);
       setPageEnd('');
       setContent('');
       setVisibility('private');
@@ -453,37 +458,6 @@ function MemosPage() {
             <div style={styles.modalHeader}>
               <div style={styles.modalTitle}>✏️ 메모 작성</div>
               <button style={styles.closeBtn} onClick={closeModal} aria-label="닫기">×</button>
-            </div>
-            {/* 현재 읽은 페이지 업데이트 */}
-            <div style={{ backgroundColor: '#FDF8F0', borderRadius: 8, padding: '12px 16px', marginBottom: 16, border: '1px solid #E8DFD3' }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: '#5C4A32', marginBottom: 8 }}>
-                📖 현재 읽은 페이지: <span style={{ color: '#C8962E' }}>{currentProgress}p</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <input
-                  type="number"
-                  min="0"
-                  value={newProgress}
-                  onChange={(e) => setNewProgress(e.target.value)}
-                  style={{ ...styles.input, width: 100 }}
-                  placeholder="페이지"
-                />
-                <button
-                  type="button"
-                  onClick={handleUpdateProgress}
-                  disabled={progressSaving || parseInt(newProgress) === currentProgress}
-                  style={{
-                    padding: '8px 14px', fontSize: 13, fontWeight: 600, color: '#fff',
-                    backgroundColor: progressSaving || parseInt(newProgress) === currentProgress ? '#a0aec0' : '#38a169',
-                    border: 'none', borderRadius: 6, cursor: progressSaving || parseInt(newProgress) === currentProgress ? 'default' : 'pointer',
-                  }}
-                >
-                  {progressSaving ? '저장 중...' : '변경'}
-                </button>
-                <span style={{ fontSize: 12, color: '#a0aec0' }}>
-                  메모 작성 전에 읽은 페이지를 먼저 업데이트하세요
-                </span>
-              </div>
             </div>
             <form onSubmit={handleSubmit} noValidate>
               {serverError && <div style={styles.serverError}>{serverError}</div>}

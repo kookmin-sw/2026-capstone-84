@@ -26,8 +26,13 @@ export const memoService = {
     // visibility에서 isPublic 동기화
     const visibility = data.visibility ?? 'private';
     const isPublic = visibility === 'public';
+
+    // 메모의 끝 페이지가 현재 진행도보다 크면 자동 갱신
     if (data.pageEnd > member.readingProgress) {
-      throw new AppError(400, 'INVALID_PAGE_RANGE', `아직 읽지 않은 페이지입니다. 현재 읽은 페이지: ${member.readingProgress}`);
+      await prisma.groupMember.update({
+        where: { groupId_userId: { groupId, userId } },
+        data: { readingProgress: data.pageEnd },
+      });
     }
 
     const memo = await prisma.memo.create({
